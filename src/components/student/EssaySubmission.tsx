@@ -12,8 +12,16 @@ import {
   AlertCircle,
   RefreshCw,
   Check,
-  RotateCcw
+  RotateCcw,
+  Keyboard,
+  ArrowLeft,
+  ArrowRight,
+  Delete,
+  Eye,
+  CornerDownLeft
 } from 'lucide-react';
+import { MathVirtualKeyboard } from '../math/MathVirtualKeyboard';
+import { MathText } from '../math/MathText';
 
 interface EssaySubmissionProps {
   questionId: string;
@@ -124,6 +132,68 @@ export const EssaySubmission: React.FC<EssaySubmissionProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState<boolean>(false);
+
+  // Quick helper to insert text at cursor in essay textarea
+  const insertTextAtCursor = (textToInsert: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      onTextChange(textValue + textToInsert);
+      return;
+    }
+    const start = textarea.selectionStart ?? textValue.length;
+    const end = textarea.selectionEnd ?? textValue.length;
+    const newVal = textValue.substring(0, start) + textToInsert + textValue.substring(end);
+    onTextChange(newVal);
+    setTimeout(() => {
+      textarea.focus();
+      const pos = start + textToInsert.length;
+      textarea.setSelectionRange(pos, pos);
+    }, 0);
+  };
+
+  // Helper for arrow keys
+  const moveCursorLeft = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const pos = Math.max(0, (textarea.selectionStart ?? 0) - 1);
+    textarea.focus();
+    textarea.setSelectionRange(pos, pos);
+  };
+
+  const moveCursorRight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const pos = Math.min(textValue.length, (textarea.selectionStart ?? 0) + 1);
+    textarea.focus();
+    textarea.setSelectionRange(pos, pos);
+  };
+
+  const deleteAtCursor = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      if (textValue.length > 0) onTextChange(textValue.slice(0, -1));
+      return;
+    }
+    const start = textarea.selectionStart ?? textValue.length;
+    const end = textarea.selectionEnd ?? textValue.length;
+    if (start !== end) {
+      const newVal = textValue.substring(0, start) + textValue.substring(end);
+      onTextChange(newVal);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start, start);
+      }, 0);
+    } else if (start > 0) {
+      const newVal = textValue.substring(0, start - 1) + textValue.substring(start);
+      onTextChange(newVal);
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start - 1, start - 1);
+      }, 0);
+    }
+  };
 
   // Stop camera stream safely
   const stopLiveCameraStream = () => {
@@ -461,21 +531,157 @@ export const EssaySubmission: React.FC<EssaySubmissionProps> = ({
         </div>
       )}
 
-      {/* TAB 2: DIRECT TEXT EDITOR */}
+      {/* TAB 2: DIRECT TEXT EDITOR WITH MATH VIRTUAL KEYBOARD */}
       {activeTab === 'text' && (
-        <div className="space-y-2">
+        <div className="space-y-3">
+          {/* Quick Math Toolbar */}
+          <div className="bg-slate-900 text-white p-2.5 rounded-2xl border border-slate-700/80 shadow-xs space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                  <Keyboard className="w-4 h-4" />
+                  <span>Ký hiệu toán học nhanh:</span>
+                </span>
+                <span className="text-[11px] text-slate-400 hidden sm:inline">
+                  Chèn trực tiếp tại vị trí con trỏ
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {/* Navigation arrow keys */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={moveCursorLeft}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 hover:text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                  title="Di chuyển con trỏ sang trái"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[10px]">Trái</span>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={moveCursorRight}
+                  className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 hover:text-white text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                  title="Di chuyển con trỏ sang phải"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[10px]">Phải</span>
+                </button>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={deleteAtCursor}
+                  className="px-2 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 border border-rose-800/40"
+                  title="Xóa ký tự trước con trỏ"
+                >
+                  <Delete className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[10px]">Xóa</span>
+                </button>
+
+                {/* Toggle Full Keyboard Button */}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setIsKeyboardOpen(!isKeyboardOpen)}
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                    isKeyboardOpen
+                      ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/40'
+                      : 'bg-emerald-950/60 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/50'
+                  }`}
+                >
+                  <Keyboard className="w-3.5 h-3.5" />
+                  <span>{isKeyboardOpen ? 'Đóng bàn phím' : 'Mở bàn phím ảo đầy đủ'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Math Symbols Strip */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin">
+              {[
+                { label: 'π', val: 'π', highlight: true, title: 'Số Pi' },
+                { label: 'e', val: 'e', highlight: true, title: 'Số Euler' },
+                { label: 'x²', val: '²', title: 'Bình phương' },
+                { label: 'x³', val: '³', title: 'Lập phương' },
+                { label: 'xⁿ', val: '^', title: 'Số mũ' },
+                { label: '√x', val: '√', title: 'Căn bậc hai' },
+                { label: '∛', val: '∛', title: 'Căn bậc ba' },
+                { label: '/', val: '/', title: 'Phân số / chia' },
+                { label: '±', val: '±', title: 'Cộng trừ' },
+                { label: '≤', val: '≤', title: 'Nhỏ hơn hoặc bằng' },
+                { label: '≥', val: '≥', title: 'Lớn hơn hoặc bằng' },
+                { label: '∞', val: '∞', title: 'Vô cực' },
+                { label: "f'(x)", val: "f'(x)", title: 'Đạo hàm f(x)' },
+                { label: "y'", val: "y'", title: 'Đạo hàm y' },
+                { label: 'lim', val: 'lim ', title: 'Giới hạn' },
+                { label: '∫', val: '∫', title: 'Tích phân' },
+                { label: 'dx', val: 'dx', title: 'Vi phân dx' },
+                { label: '(', val: '(', title: 'Mở ngoặc' },
+                { label: ')', val: ')', title: 'Đóng ngoặc' },
+                { label: '=', val: '=', title: 'Dấu bằng' },
+                { label: '≠', val: '≠', title: 'Khác' },
+                { label: '↵ Xuống dòng', val: '\n', title: 'Xuống dòng' },
+              ].map((sym, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertTextAtCursor(sym.val)}
+                  title={sym.title}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all shrink-0 cursor-pointer active:scale-95 ${
+                    sym.highlight
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-1 ring-emerald-400 font-serif'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700'
+                  }`}
+                >
+                  {sym.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Text Area */}
           <textarea
+            ref={textareaRef}
             value={textValue}
             onChange={(e) => onTextChange(e.target.value)}
             disabled={disabled}
-            rows={5}
-            placeholder="Nhập lời giải hoặc câu trả lời tự luận chi tiết tại đây (hỗ trợ nhập công thức toán học)..."
-            className="w-full p-4 rounded-xl border border-slate-300 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-sans leading-relaxed bg-white"
+            rows={6}
+            placeholder="Nhập lời giải hoặc câu trả lời tự luận chi tiết tại đây (hỗ trợ các ký hiệu π, e, số mũ, căn bậc hai, đạo hàm, phân số...)..."
+            className="w-full p-4 rounded-2xl border border-slate-300 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 font-sans leading-relaxed bg-white shadow-2xs"
           />
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>Đã nhập: {textValue.length} ký tự</span>
+
+          {/* KaTeX Live Math Preview if text exists */}
+          {textValue.trim() && (
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Xem trước kết quả công thức tự luận (KaTeX):</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-slate-200 text-slate-900 text-sm overflow-x-auto">
+                <MathText content={textValue} />
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+            <span>Đã nhập: <strong className="text-slate-800">{textValue.length}</strong> ký tự</span>
             <span>Học sinh có thể kết hợp cả chữ viết tay chụp ảnh và văn bản soạn thảo</span>
           </div>
+
+          {/* Full Virtual Math Keyboard when toggled open */}
+          {isKeyboardOpen && (
+            <MathVirtualKeyboard
+              targetInput={textareaRef.current}
+              currentValue={textValue}
+              onChange={onTextChange}
+              activeContextTitle="Câu tự luận (Bài làm chi tiết)"
+              isOpen={isKeyboardOpen}
+              onClose={() => setIsKeyboardOpen(false)}
+              layoutMode="inline"
+            />
+          )}
         </div>
       )}
 
