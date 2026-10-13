@@ -124,7 +124,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 {exam.title}
               </h2>
               <p className="text-sm text-emerald-100/90 leading-relaxed">
-                Phòng thi đang mở cho học sinh làm bài ({currentStudent?.name} • Lớp {currentStudent?.className || '12A1'}). Đề thi bám sát chương trình GDPT 2018 với 3 phần: Trắc nghiệm nhiều lựa chọn, Trắc nghiệm Đúng/Sai, Trả lời ngắn & Tự luận.
+                Phòng thi đang mở cho học sinh làm bài ({currentStudent?.name}{currentStudent?.className ? ` • Lớp ${currentStudent.className}` : ''}). Đề thi bám sát chương trình GDPT 2018 với 3 phần: Trắc nghiệm nhiều lựa chọn, Trắc nghiệm Đúng/Sai, Trả lời ngắn & Tự luận.
               </p>
               <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-emerald-200/80">
                 <span className="flex items-center gap-1">

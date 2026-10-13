@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { MathText } from './MathText';
 
-interface TextbookGraphProps {
+export interface TextbookGraphProps {
   cValue?: number;
-  type?: 'cubic' | 'rational' | 'quartic' | 'trig';
+  type?: 'cubic' | 'rational' | 'quartic' | 'trig' | 'oblique_rational';
   title?: string;
 }
 
 export const TextbookGraph: React.FC<TextbookGraphProps> = ({
   cValue = 2,
-  type = 'cubic',
+  type = 'quartic',
   title = 'Hình minh họa. Đồ thị hàm số trong hệ trục tọa độ Oxy chuẩn SGK',
 }) => {
-  const [graphType, setGraphType] = useState<'cubic' | 'rational' | 'quartic' | 'trig'>(type);
+  const [graphType, setGraphType] = useState<'cubic' | 'rational' | 'quartic' | 'trig' | 'oblique_rational'>(type);
 
   // SVG dimensions
   const width = 420;
@@ -63,21 +63,43 @@ export const TextbookGraph: React.FC<TextbookGraphProps> = ({
   const asympX = originX + 2 * scale; // vertical asymptote x = 2
   const asympY = originY - 1 * scale; // horizontal asymptote y = 1
 
-  // Points for Quartic: y = x^4 - 2x^2 + 1
+  // Points for Quartic W-curve: y = x^4 - 2x^2 (Matching Đề 10 Câu 1 trong PDF)
   const quarticPoints: [number, number][] = [];
-  for (let x = -1.9; x <= 1.9; x += 0.04) {
-    const yVal = Math.pow(x, 4) - 2 * Math.pow(x, 2) + 1;
-    const svgX = originX + x * scale * 1.3;
-    const svgY = originY - yVal * scale * 0.8;
+  for (let x = -1.6; x <= 1.6; x += 0.03) {
+    const yVal = Math.pow(x, 4) - 2 * Math.pow(x, 2);
+    const svgX = originX + x * scale * 1.5;
+    const svgY = originY - yVal * scale * 1.4;
     if (svgY >= -20 && svgY <= height + 20) {
       quarticPoints.push([svgX, svgY]);
     }
   }
   const quarticPath = quarticPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
 
+  // Points for Oblique Rational: y = (x^2 + 2x + 2)/(x + 1) (Matching Đề 10 Câu 4 trong PDF)
+  const oblLeftPoints: [number, number][] = [];
+  for (let x = -4.5; x <= -1.15; x += 0.04) {
+    const yVal = (x * x + 2 * x + 2) / (x + 1);
+    const svgX = originX + x * scale;
+    const svgY = originY - yVal * scale * 0.7;
+    if (svgY >= -20 && svgY <= height + 20) {
+      oblLeftPoints.push([svgX, svgY]);
+    }
+  }
+  const oblLeftPath = oblLeftPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+
+  const oblRightPoints: [number, number][] = [];
+  for (let x = -0.85; x <= 3.5; x += 0.04) {
+    const yVal = (x * x + 2 * x + 2) / (x + 1);
+    const svgX = originX + x * scale;
+    const svgY = originY - yVal * scale * 0.7;
+    if (svgY >= -20 && svgY <= height + 20) {
+      oblRightPoints.push([svgX, svgY]);
+    }
+  }
+  const oblRightPath = oblRightPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ');
+
   // Points for Trigonometric: y = sin(x) with pi units
   const trigPoints: [number, number][] = [];
-  // scale for trig: 1 pi = 70px
   const trigPiScale = 65;
   for (let x = -3.5; x <= 3.5; x += 0.05) {
     const yVal = Math.sin(x);
@@ -100,6 +122,39 @@ export const TextbookGraph: React.FC<TextbookGraphProps> = ({
         <div className="flex flex-wrap items-center gap-1 font-sans">
           <button
             type="button"
+            onClick={() => setGraphType('quartic')}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+              graphType === 'quartic'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Trùng Phương W (Đề 10 Câu 1)
+          </button>
+          <button
+            type="button"
+            onClick={() => setGraphType('oblique_rational')}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+              graphType === 'oblique_rational'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Tiệm Cận Xiên (Đề 10 Câu 4)
+          </button>
+          <button
+            type="button"
+            onClick={() => setGraphType('rational')}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+              graphType === 'rational'
+                ? 'bg-emerald-700 text-white shadow-xs'
+                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            Phân Thức Bậc 1/1
+          </button>
+          <button
+            type="button"
             onClick={() => setGraphType('cubic')}
             className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
               graphType === 'cubic'
@@ -111,28 +166,6 @@ export const TextbookGraph: React.FC<TextbookGraphProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setGraphType('rational')}
-            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-              graphType === 'rational'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Phân Thức (Tiệm Cận)
-          </button>
-          <button
-            type="button"
-            onClick={() => setGraphType('quartic')}
-            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-              graphType === 'quartic'
-                ? 'bg-emerald-700 text-white shadow-xs'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-            }`}
-          >
-            Trùng Phương
-          </button>
-          <button
-            type="button"
             onClick={() => setGraphType('trig')}
             className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
               graphType === 'trig'
@@ -140,7 +173,7 @@ export const TextbookGraph: React.FC<TextbookGraphProps> = ({
                 : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            Lượng Giác (y = sin x)
+            Lượng Giác (π)
           </button>
         </div>
       </div>

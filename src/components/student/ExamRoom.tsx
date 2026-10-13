@@ -1538,7 +1538,7 @@ export const ExamRoom: React.FC<ExamRoomProps> = ({ onBackToDashboard, onGoToHis
                     studentId: currentStudent.id,
                     studentName: currentStudent.name,
                     studentAvatar: currentStudent.avatar,
-                    className: currentStudent.className || '12A1',
+                    className: currentStudent.className || 'Toán THPT',
                     variantCode: assignedCode,
                     questionId: complaintQuestionId === 'all' ? undefined : complaintQuestionId,
                     questionNumber: qNum,

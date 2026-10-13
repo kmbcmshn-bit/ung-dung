@@ -79,7 +79,7 @@ export const GradebookHistoryModal: React.FC<GradebookHistoryModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <div className="text-right">
                     <div className="text-base font-black text-emerald-700">
                       {item.score.toFixed(1)} đ
@@ -99,10 +99,9 @@ export const GradebookHistoryModal: React.FC<GradebookHistoryModalProps> = ({
                         if (matched) {
                           onViewSubmission(matched);
                         } else {
-                          // Create synthetic submission for viewing
                           const syntheticSub: Submission = {
-                            id: `sub-hist-${record.studentId}-${idx}`,
-                            examId: 'exam-1',
+                            id: item.submissionId || `sub-hist-${record.studentId}-${idx}`,
+                            examId: item.examId || 'exam-custom',
                             examTitle: item.examTitle,
                             studentId: record.studentId,
                             studentName: record.studentName,
@@ -136,12 +135,12 @@ export const GradebookHistoryModal: React.FC<GradebookHistoryModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-slate-100">
           <span className="text-xs text-slate-500">
-            Dữ liệu đồng bộ trực tiếp từ Sổ điểm điện tử Lớp 12A1
+            Dữ liệu đồng bộ trực tiếp từ Sổ điểm điện tử môn Toán học GDPT 2018
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 transition-colors"
+            className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold hover:bg-slate-200 transition-colors cursor-pointer"
           >
             Đóng
           </button>

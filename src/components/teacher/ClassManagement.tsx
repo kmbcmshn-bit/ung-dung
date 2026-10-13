@@ -373,7 +373,7 @@ export const ClassManagement: React.FC = () => {
             className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs shadow-lg shadow-emerald-700/20 transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Tạo Lớp Học Đầu Tiên (Ví dụ: 12A1)</span>
+            <span>Tạo Lớp Học Mới</span>
           </button>
         </div>
       ) : (

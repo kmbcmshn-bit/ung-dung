@@ -39,7 +39,10 @@ import {
   MessageSquareQuote,
   Check,
   X,
-  Eye
+  Eye,
+  Trash2,
+  Edit2,
+  Save
 } from 'lucide-react';
 
 export type TeacherMenuTab =
@@ -73,7 +76,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     updateExam,
     exams,
     selectExam,
+    deleteExam,
     submissions,
+    deleteSubmission,
+    updateSubmissionScore,
     gradebook,
     calculationMode,
     setCalculationMode,
@@ -104,6 +110,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [assignSuccessBanner, setAssignSuccessBanner] = useState<string | null>(null);
   const [gradingSubmission, setGradingSubmission] = useState<Submission | null>(null);
   const [historyRecord, setHistoryRecord] = useState<GradebookRecord | null>(null);
+
+  // Delete Exam modal state
+  const [examToDelete, setExamToDelete] = useState<Exam | null>(null);
+
+  // Gradebook Edit & Delete Score states
+  const [selectedGradebookClassId, setSelectedGradebookClassId] = useState<string>('all');
+  const [editingScoreStudent, setEditingScoreStudent] = useState<{
+    studentId: string;
+    studentName: string;
+    submissionId?: string;
+    currentScore: number;
+  } | null>(null);
+  const [newScoreVal, setNewScoreVal] = useState<string>('');
+  const [scoreTeacherNote, setScoreTeacherNote] = useState<string>('');
+  const [scoreToDeleteStudent, setScoreToDeleteStudent] = useState<{
+    studentId: string;
+    studentName: string;
+    submissionId?: string;
+  } | null>(null);
 
   // Search in grading
   const [gradingSearch, setGradingSearch] = useState<string>('');
@@ -137,22 +162,20 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setIsBatchGrading(false);
   };
 
-  // Active assigned students based on target assignment
+  // Active assigned students based on target assignment (Only returns students when class is assigned!)
   const activeAssignedStudents = React.useMemo(() => {
-    if (!exam) return students;
-    if (exam.targetAssignment?.type === 'class' && exam.targetAssignment.targetClassId) {
-      const classSts = students.filter(s => s.classId === exam.targetAssignment?.targetClassId);
-      return classSts.length > 0 ? classSts : students;
+    if (!exam || !exam.targetAssignment) return [];
+    if (exam.targetAssignment.type === 'class' && exam.targetAssignment.targetClassId) {
+      return students.filter(s => s.classId === exam.targetAssignment?.targetClassId);
     }
-    if (exam.targetAssignment?.type === 'custom_students' && exam.targetAssignment.studentIds) {
+    if (exam.targetAssignment.type === 'custom_students' && exam.targetAssignment.studentIds) {
       const set = new Set(exam.targetAssignment.studentIds);
-      const customList = students.filter(s => set.has(s.id));
-      return customList.length > 0 ? customList : students;
+      return students.filter(s => set.has(s.id));
     }
-    if (exam.targetAssignment?.type === 'group') {
+    if (exam.targetAssignment.type === 'group') {
       return students.slice(0, 15);
     }
-    return students;
+    return [];
   }, [exam, students]);
 
   return (
@@ -732,7 +755,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {exams.map((ex) => {
                             const targetText =
                               ex.targetAssignment?.type === 'class'
-                                ? `Lớp ${ex.targetAssignment.targetClassName || '12A1'}`
+                                ? `Lớp ${ex.targetAssignment.targetClassName || classes.find(c => c.id === ex.targetAssignment?.targetClassId)?.name || 'Đã chọn'}`
                                 : ex.targetAssignment?.type === 'group'
                                 ? ex.targetAssignment.groupName
                                 : ex.targetAssignment?.type === 'custom_students'
@@ -745,6 +768,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             );
                           })}
                         </select>
+                        <button
+                          type="button"
+                          onClick={() => setExamToDelete(exam)}
+                          className="p-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 transition-colors cursor-pointer"
+                          title="Xóa đề thi này"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
 
@@ -805,7 +836,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           {exam.targetAssignment.type === 'custom_students' && <UserCheck className="w-3.5 h-3.5 text-emerald-700" />}
                           <span>
                             {exam.targetAssignment.type === 'class'
-                              ? `Lớp ${exam.targetAssignment.targetClassName || '12A1'} (${activeAssignedStudents.length} học sinh)`
+                              ? `Lớp ${exam.targetAssignment.targetClassName || classes.find(c => c.id === exam.targetAssignment?.targetClassId)?.name || 'Đã chọn'} (${activeAssignedStudents.length} học sinh)`
                               : exam.targetAssignment.type === 'group'
                               ? `${exam.targetAssignment.groupName} (${activeAssignedStudents.length} học sinh)`
                               : `${activeAssignedStudents.length} học sinh được chọn`}
@@ -865,6 +896,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     >
                       <PlusCircle className="w-4 h-4" />
                       <span>Tạo Đề Gốc Khác</span>
+                    </button>
+
+                    {/* DELETE CREATED EXAM BUTTON */}
+                    <button
+                      type="button"
+                      onClick={() => setExamToDelete(exam)}
+                      className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold border border-red-200 transition-colors cursor-pointer"
+                      title="Xóa đề thi này khỏi hệ thống"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600" />
+                      <span>Xóa Đề Này</span>
                     </button>
                   </div>
                 </div>
@@ -1022,19 +1064,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-2">
                     <School className="w-4 h-4 text-emerald-600" />
                     <span>
-                      Bảng Phân Phối Mã Đề Cho{' '}
-                      {exam?.targetAssignment?.type === 'class'
-                        ? `Lớp ${exam.targetAssignment.targetClassName || '12A1'}`
-                        : exam?.targetAssignment?.type === 'group'
-                        ? exam.targetAssignment.groupName
-                        : exam?.targetAssignment?.type === 'custom_students'
-                        ? 'Danh Sách Học Sinh Được Chọn'
-                        : 'Lớp 12A1'}{' '}
-                      ({activeAssignedStudents.length} Học Sinh)
+                      {exam?.targetAssignment ? (
+                        <>
+                          Bảng Phân Phối Mã Đề Cho{' '}
+                          {exam.targetAssignment.type === 'class'
+                            ? `Lớp ${exam.targetAssignment.targetClassName || classes.find(c => c.id === exam.targetAssignment?.targetClassId)?.name || 'Đã Chọn'}`
+                            : exam.targetAssignment.type === 'group'
+                            ? exam.targetAssignment.groupName
+                            : 'Danh Sách Học Sinh Được Chọn'}{' '}
+                          ({activeAssignedStudents.length} Học Sinh)
+                        </>
+                      ) : (
+                        'Phân Phối Mã Đề Cho Học Sinh'
+                      )}
                     </span>
                   </h4>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Tự động cấp phát mã đề riêng biệt độc lập cho từng học sinh • Bảo toàn 100% độ khó
+                    {exam?.targetAssignment
+                      ? 'Tự động cấp phát mã đề riêng biệt độc lập cho từng học sinh • Bảo toàn 100% độ khó'
+                      : 'Đề thi hiện chưa được giao cho lớp nào. Chọn lớp để cấp phát mã đề cá nhân hóa.'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1044,56 +1092,80 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 transition-colors cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>Giao Cho Lớp Khác</span>
+                    <span>{exam?.targetAssignment ? 'Giao Cho Lớp Khác' : 'Chọn Lớp Nhận Đề'}</span>
                   </button>
                 </div>
               </div>
 
-              <div className="overflow-x-auto max-h-80">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold sticky top-0">
-                    <tr>
-                      <th className="p-3">STT</th>
-                      <th className="p-3">Họ và Tên Học Sinh</th>
-                      <th className="p-3">Tên Đăng Nhập / Mã HS</th>
-                      <th className="p-3">Mã Đề Được Cấp Phát</th>
-                      <th className="p-3">Trạng Thái Đề</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium">
-                    {activeAssignedStudents.map((st, idx) => {
-                      const code = exam?.assignedCodes?.[st.id] || String(101 + idx);
-                      return (
-                        <tr key={st.id} className="hover:bg-slate-50/60">
-                          <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
-                          <td className="p-3 font-semibold text-slate-800 flex items-center gap-2">
-                            <img src={st.avatar} alt="" className="w-5 h-5 rounded-full" />
-                            <span>{st.name}</span>
-                          </td>
-                          <td className="p-3">
-                            <span className="font-mono text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs">
-                              {st.username || st.email}
-                            </span>
-                            {st.studentCode && (
-                              <span className="ml-2 font-mono text-[10px] text-slate-500">
-                                (Mã: {st.studentCode})
+              {activeAssignedStudents.length === 0 ? (
+                <div className="p-8 text-center bg-slate-50/50 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center mx-auto border border-amber-200">
+                    <School className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="font-bold text-slate-800 text-sm">
+                      Chưa Phân Phối Đề Cho Lớp Nào
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto">
+                      Danh sách học sinh sẽ chỉ hiển thị khi Thầy/Cô chọn lớp nhận đề thi. Bấm nút bên dưới để chọn một trong các lớp Thầy/Cô đang dạy.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAssignModalOpen(true)}
+                    className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Chọn Lớp Giao Đề Ngay</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-80">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold sticky top-0">
+                      <tr>
+                        <th className="p-3">STT</th>
+                        <th className="p-3">Họ và Tên Học Sinh</th>
+                        <th className="p-3">Tên Đăng Nhập / Mã HS</th>
+                        <th className="p-3">Mã Đề Được Cấp Phát</th>
+                        <th className="p-3">Trạng Thái Đề</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {activeAssignedStudents.map((st, idx) => {
+                        const code = exam?.assignedCodes?.[st.id] || String(101 + (idx % Math.max(1, Object.keys(exam?.variants || {}).length)));
+                        return (
+                          <tr key={st.id} className="hover:bg-slate-50/60">
+                            <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
+                            <td className="p-3 font-semibold text-slate-800 flex items-center gap-2">
+                              <img src={st.avatar} alt="" className="w-5 h-5 rounded-full" />
+                              <span>{st.name}</span>
+                            </td>
+                            <td className="p-3">
+                              <span className="font-mono text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-xs">
+                                {st.username || st.email}
                               </span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            <span className="font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              Mã đề #{code}
-                            </span>
-                          </td>
-                          <td className="p-3 text-emerald-700 font-semibold">
-                            ✓ Sẵn sàng làm bài
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                              {st.studentCode && (
+                                <span className="ml-2 font-mono text-[10px] text-slate-500">
+                                  (Mã: {st.studentCode})
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3">
+                              <span className="font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                Mã đề #{code}
+                              </span>
+                            </td>
+                            <td className="p-3 text-emerald-700 font-semibold">
+                              ✓ Sẵn sàng làm bài
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -1253,12 +1325,26 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           <div className="space-y-4">
             {/* Top Gradebook Control Bar */}
             <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">
-                  Sổ Điểm Điện Tử Lớp 12A1 (Chuẩn GDPT 2018)
-                </h3>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="font-bold text-slate-900 text-base">
+                    Sổ Điểm Điện Tử Chuẩn GDPT 2018
+                  </h3>
+                  <select
+                    value={selectedGradebookClassId}
+                    onChange={(e) => setSelectedGradebookClassId(e.target.value)}
+                    className="bg-emerald-50 text-emerald-950 font-bold text-xs px-2.5 py-1.5 rounded-xl border border-emerald-300 focus:outline-none focus:border-emerald-600 cursor-pointer"
+                  >
+                    <option value="all">Tất Cả Các Lớp ({classes.length} lớp)</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        Lớp {c.name} ({students.filter(s => s.classId === c.id).length} HS)
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <p className="text-xs text-slate-500">
-                  Nhấp vào ô điểm của học sinh để xem lịch sử nộp các bài tập & bài kiểm tra
+                  Thầy/Cô có thể nhấp vào ô điểm để xem chi tiết lịch sử nộp bài, hoặc bấm <strong>"Sửa"</strong> / <strong>"Xóa điểm"</strong> nếu thấy điểm số chưa hợp lý và muốn thay đổi.
                 </p>
               </div>
 
@@ -1305,60 +1391,115 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       <th className="p-3 text-center bg-emerald-50 text-emerald-950 font-bold">
                         {calculationMode === 'average' ? 'Điểm TB Học Kỳ' : 'Điểm Cao Nhất'}
                       </th>
+                      <th className="p-3 text-center w-28">Thao Tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {gradebook.map((record) => (
-                      <tr key={record.studentId} className="hover:bg-slate-50/60 transition-colors">
-                        <td className="p-3 text-center text-slate-400 font-mono">
-                          {record.rollNumber}
-                        </td>
-                        <td className="p-3 font-semibold text-slate-900">
-                          {record.studentName}
-                        </td>
+                    {gradebook
+                      .filter(record => {
+                        if (selectedGradebookClassId === 'all') return true;
+                        const st = students.find(s => s.id === record.studentId);
+                        return st?.classId === selectedGradebookClassId;
+                      })
+                      .map((record) => (
+                        <tr key={record.studentId} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="p-3 text-center text-slate-400 font-mono">
+                            {record.rollNumber}
+                          </td>
+                          <td className="p-3 font-semibold text-slate-900">
+                            {record.studentName}
+                          </td>
 
-                        {/* Interactive Grade Cells: click to view history */}
-                        <td
-                          onClick={() => setHistoryRecord(record)}
-                          className="p-3 text-center font-mono font-bold text-emerald-800 hover:bg-emerald-50 cursor-pointer transition-colors"
-                        >
-                          <span className="px-2 py-0.5 rounded bg-slate-50 hover:bg-emerald-100">
-                            {record.dtx1?.toFixed(1) || '-'}
-                          </span>
-                        </td>
+                          {/* Interactive Grade Cells: click to view history */}
+                          <td
+                            onClick={() => setHistoryRecord(record)}
+                            className="p-3 text-center font-mono font-bold text-emerald-800 hover:bg-emerald-50 cursor-pointer transition-colors"
+                            title="Bấm để xem lịch sử nộp bài"
+                          >
+                            <span className="px-2 py-0.5 rounded bg-slate-50 hover:bg-emerald-100">
+                              {record.dtx1 !== undefined ? record.dtx1.toFixed(1) : '-'}
+                            </span>
+                          </td>
 
-                        <td
-                          onClick={() => setHistoryRecord(record)}
-                          className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
-                        >
-                          <span className="px-2 py-0.5 rounded bg-slate-50">
-                            {record.dtx2?.toFixed(1) || '-'}
-                          </span>
-                        </td>
+                          <td
+                            onClick={() => setHistoryRecord(record)}
+                            className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
+                            title="Bấm để xem lịch sử nộp bài"
+                          >
+                            <span className="px-2 py-0.5 rounded bg-slate-50">
+                              {record.dtx2 !== undefined ? record.dtx2.toFixed(1) : '-'}
+                            </span>
+                          </td>
 
-                        <td
-                          onClick={() => setHistoryRecord(record)}
-                          className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
-                        >
-                          <span className="px-2 py-0.5 rounded bg-slate-50">
-                            {record.giuaKy?.toFixed(1) || '-'}
-                          </span>
-                        </td>
+                          <td
+                            onClick={() => setHistoryRecord(record)}
+                            className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
+                            title="Bấm để xem lịch sử nộp bài"
+                          >
+                            <span className="px-2 py-0.5 rounded bg-slate-50">
+                              {record.giuaKy !== undefined ? record.giuaKy.toFixed(1) : '-'}
+                            </span>
+                          </td>
 
-                        <td
-                          onClick={() => setHistoryRecord(record)}
-                          className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
-                        >
-                          <span className="px-2 py-0.5 rounded bg-slate-50">
-                            {record.cuoiKy?.toFixed(1) || '-'}
-                          </span>
-                        </td>
+                          <td
+                            onClick={() => setHistoryRecord(record)}
+                            className="p-3 text-center font-mono font-bold text-slate-700 hover:bg-slate-100 cursor-pointer transition-colors"
+                            title="Bấm để xem lịch sử nộp bài"
+                          >
+                            <span className="px-2 py-0.5 rounded bg-slate-50">
+                              {record.cuoiKy !== undefined ? record.cuoiKy.toFixed(1) : '-'}
+                            </span>
+                          </td>
 
-                        <td className="p-3 text-center font-mono font-black text-emerald-800 bg-emerald-50/50 text-sm">
-                          {calculationMode === 'average' ? record.averageScore.toFixed(1) : record.highestScore.toFixed(1)}
-                        </td>
-                      </tr>
-                    ))}
+                          <td className="p-3 text-center font-mono font-black text-emerald-800 bg-emerald-50/50 text-sm">
+                            {calculationMode === 'average' ? record.averageScore.toFixed(1) : record.highestScore.toFixed(1)}
+                          </td>
+
+                          {/* Actions: Edit & Delete Score */}
+                          <td className="p-3 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sub = submissions.find(
+                                    s => s.studentId === record.studentId && (exam ? s.examId === exam.id : true)
+                                  );
+                                  setEditingScoreStudent({
+                                    studentId: record.studentId,
+                                    studentName: record.studentName,
+                                    submissionId: sub?.id,
+                                    currentScore: record.dtx1 || 0,
+                                  });
+                                  setNewScoreVal(String(record.dtx1 !== undefined ? record.dtx1 : 0));
+                                  setScoreTeacherNote('');
+                                }}
+                                className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer text-[11px] font-bold flex items-center gap-1"
+                                title="Sửa điểm học sinh này"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                                <span>Sửa</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const sub = submissions.find(
+                                    s => s.studentId === record.studentId && (exam ? s.examId === exam.id : true)
+                                  );
+                                  setScoreToDeleteStudent({
+                                    studentId: record.studentId,
+                                    studentName: record.studentName,
+                                    submissionId: sub?.id,
+                                  });
+                                }}
+                                className="p-1 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors cursor-pointer"
+                                title="Xóa điểm học sinh này"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -1768,6 +1909,195 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         exam={exam}
         onAssignSuccess={(msg) => setAssignSuccessBanner(msg)}
       />
+
+      {/* CONFIRM DELETE EXAM MODAL */}
+      {examToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 text-base">Xác Nhận Xóa Đề Thi?</h4>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Thầy/Cô có chắc chắn muốn xóa đề thi <strong>"{examToDelete.title}"</strong> không? Toàn bộ các mã đề và dữ liệu bài làm liên quan của đề thi này sẽ bị xóa khỏi hệ thống.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setExamToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteExam(examToDelete.id);
+                  setExamToDelete(null);
+                  setAssignSuccessBanner(`Đã xóa đề thi "${examToDelete.title}" thành công.`);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-sm"
+              >
+                Xác Nhận Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT STUDENT SCORE MODAL */}
+      {editingScoreStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">
+                    Điều Chỉnh Điểm Số: {editingScoreStudent.studentName}
+                  </h4>
+                  <p className="text-[11px] text-slate-500">
+                    Cập nhật điểm trong sổ điểm điện tử
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingScoreStudent(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Điểm số mới (Thang điểm 10):
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value={newScoreVal}
+                  onChange={(e) => setNewScoreVal(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 font-mono font-bold text-base text-emerald-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  placeholder="Ví dụ: 8.5"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Lý do điều chỉnh / Ghi chú của giáo viên:
+                </label>
+                <textarea
+                  rows={3}
+                  value={scoreTeacherNote}
+                  onChange={(e) => setScoreTeacherNote(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none text-xs"
+                  placeholder="Ví dụ: Đã chấm lại phần tự luận, bổ sung điểm do lời giải chính xác..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingScoreStudent(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const num = parseFloat(newScoreVal);
+                  if (isNaN(num) || num < 0 || num > 10) {
+                    alert('Vui lòng nhập điểm hợp lệ từ 0 đến 10!');
+                    return;
+                  }
+                  if (editingScoreStudent.submissionId) {
+                    updateSubmissionScore(editingScoreStudent.submissionId, num, scoreTeacherNote);
+                  } else {
+                    const newSub: Submission = {
+                      id: `sub-manual-${editingScoreStudent.studentId}-${Date.now()}`,
+                      examId: exam?.id || 'exam-custom',
+                      examTitle: exam?.title || 'Bài kiểm tra',
+                      studentId: editingScoreStudent.studentId,
+                      studentName: editingScoreStudent.studentName,
+                      studentAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=100&h=100&q=80',
+                      variantCode: '101',
+                      submittedAt: new Date().toISOString(),
+                      violationsCount: 0,
+                      violationLogs: [],
+                      answers: {},
+                      mcqScore: +(num * 0.8).toFixed(1),
+                      essayScore: +(num * 0.2).toFixed(1),
+                      totalScore: num,
+                      status: 'confirmed',
+                      teacherReviewNotes: scoreTeacherNote || 'Điểm do giáo viên điều chỉnh trực tiếp trên bảng điểm.',
+                    };
+                    useApp().addSubmission(newSub);
+                  }
+                  setEditingScoreStudent(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Lưu Điểm Số</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE STUDENT SCORE MODAL */}
+      {scoreToDeleteStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="font-bold text-slate-900 text-base">Xác Nhận Xóa Điểm Học Sinh?</h4>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Thầy/Cô có chắc chắn muốn xóa điểm bài thi của học sinh <strong>"{scoreToDeleteStudent.studentName}"</strong>? Dữ liệu bài làm và điểm số sẽ được xóa khỏi bảng điểm để học sinh có thể làm lại hoặc cập nhật điểm mới.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setScoreToDeleteStudent(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (scoreToDeleteStudent.submissionId) {
+                    deleteSubmission(scoreToDeleteStudent.submissionId);
+                  } else {
+                    const targetSubs = submissions.filter(
+                      s => s.studentId === scoreToDeleteStudent.studentId && (exam ? s.examId === exam.id : true)
+                    );
+                    targetSubs.forEach(s => deleteSubmission(s.id));
+                  }
+                  setScoreToDeleteStudent(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer shadow-sm"
+              >
+                Xác Nhận Xóa Điểm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

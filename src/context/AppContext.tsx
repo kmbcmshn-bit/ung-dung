@@ -53,9 +53,12 @@ export interface AppContextType {
   updateExam: (exam: Exam | null) => void;
   exams: Exam[];
   selectExam: (id: string) => void;
+  deleteExam: (id: string) => void;
   submissions: Submission[];
   addSubmission: (sub: Submission) => void;
   updateSubmission: (sub: Submission) => void;
+  deleteSubmission: (submissionId: string) => void;
+  updateSubmissionScore: (submissionId: string, newScore: number, teacherFeedback?: string) => void;
   complaints: ExamComplaint[];
   submitComplaint: (complaint: Omit<ExamComplaint, 'id' | 'createdAt' | 'status'>) => { success: boolean; message: string; complaint: ExamComplaint };
   resolveComplaint: (complaintId: string, status: 'accepted' | 'rejected' | 'pending', adjustedScore?: number, teacherFeedback?: string) => void;
@@ -129,12 +132,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [classes, setClasses] = useState<ClassRoom[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CLASSES);
-    return saved ? JSON.parse(saved) : INITIAL_CLASSES;
+    if (saved) {
+      try {
+        const parsed: ClassRoom[] = JSON.parse(saved);
+        const filtered = parsed.filter(c => c.id !== 'class-12a1' && c.name !== '12A1');
+        if (filtered.length > 0) return filtered;
+      } catch (e) {}
+    }
+    return INITIAL_CLASSES.filter(c => c.id !== 'class-12a1' && c.name !== '12A1');
   });
 
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    if (saved) {
+      try {
+        const parsed: Student[] = JSON.parse(saved);
+        const filtered = parsed.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
+        if (filtered.length > 0) return filtered;
+      } catch (e) {}
+    }
+    return INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
   });
 
   const [currentStudentId, setCurrentStudentIdState] = useState<string | null>(() => {
@@ -147,19 +164,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_LESSONS;
   });
 
+  // User requirement: Bỏ đề thi gốc đi. Khi giáo viên chọn tạo đề thì ứng dụng mới hiển thị đề
   const [exam, setExam] = useState<Exam | null>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.EXAM);
-    return saved ? JSON.parse(saved) : INITIAL_EXAM;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Exclude default mock exam (exam-1 or titles containing the default text)
+        if (parsed && parsed.id !== 'exam-1' && !parsed.title?.includes('Kiểm tra ĐTX1 - Khảo sát')) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return null;
   });
 
   const [exams, setExams] = useState<Exam[]>(() => {
     const saved = localStorage.getItem('edusmart_exams_list_v4');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed: Exam[] = JSON.parse(saved);
+        const filtered = parsed.filter(
+          (e: Exam) => e && e.id !== 'exam-1' && !e.title?.includes('Kiểm tra ĐTX1 - Khảo sát')
+        );
+        return filtered;
       } catch (e) {}
     }
-    return [INITIAL_EXAM];
+    return [];
   });
 
   const [submissions, setSubmissions] = useState<Submission[]>(() => {
@@ -588,6 +619,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteExam = (examId: string) => {
+    setExams(prev => {
+      const remaining = prev.filter(e => e.id !== examId);
+      if (exam?.id === examId) {
+        setExam(remaining.length > 0 ? remaining[0] : null);
+      }
+      return remaining;
+    });
+    // Remove submissions for this deleted exam
+    setSubmissions(prev => prev.filter(s => s.examId !== examId));
+  };
+
   const addSubmission = (sub: Submission) => {
     setSubmissions(prev => {
       const filtered = prev.filter(s => !(s.examId === sub.examId && s.studentId === sub.studentId));
@@ -597,6 +640,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateSubmission = (updated: Submission) => {
     setSubmissions(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+  };
+
+  const deleteSubmission = (submissionId: string) => {
+    setSubmissions(prev => prev.filter(s => s.id !== submissionId));
+  };
+
+  const updateSubmissionScore = (submissionId: string, newScore: number, teacherFeedback?: string) => {
+    setSubmissions(prev => prev.map(s => {
+      if (s.id === submissionId) {
+        const bounded = Math.max(0, Math.min(10, Number(newScore.toFixed(2))));
+        return {
+          ...s,
+          totalScore: bounded,
+          teacherReviewNotes: teacherFeedback || 'Điểm đã được Thầy/Cô điều chỉnh lại thủ công.',
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      return s;
+    }));
   };
 
   // Complaint & Appeal actions
@@ -1245,9 +1307,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateExam,
         exams,
         selectExam,
+        deleteExam,
         submissions,
         addSubmission,
         updateSubmission,
+        deleteSubmission,
+        updateSubmissionScore,
         complaints,
         submitComplaint,
         resolveComplaint,

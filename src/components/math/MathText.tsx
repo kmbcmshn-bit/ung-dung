@@ -68,6 +68,21 @@ export function normalizeMathExpression(math: string): string {
   m = m.replace(/(?<!\\mathbb\{)(?<![a-zA-Z\\])\b(Z)\b(?![a-zA-Z])/g, '\\mathbb{Z}');
   m = m.replace(/(?<!\\mathbb\{)(?<![a-zA-Z\\])\b(Q)\b(?![a-zA-Z])/g, '\\mathbb{Q}');
 
+  // Normalize "k thuộc Z", "k in Z", "k \in Z" -> "k \in \mathbb{Z}"
+  m = m.replace(/\(\s*k\s*(?:\\in|in|thuộc)\s*(?:\\mathbb\{Z\}|Z)\s*\)/gi, '(k \\in \\mathbb{Z})');
+  m = m.replace(/(?<!\()\bk\s*(?:\\in|in|thuộc)\s*(?:\\mathbb\{Z\}|Z)\b(?!\))/gi, 'k \\in \\mathbb{Z}');
+
+  // Automatic domain enhancement for sets containing periodic terms (k\pi, k2\pi, pi/2 + k2pi)
+  // Ensure "k \in \mathbb{Z}" is present as required by SGK standard
+  m = m.replace(/(\\setminus\s*\\\{\s*)([^\}]+?)(\s*\\\})/g, (_full, prefix, inner, suffix) => {
+    // If it contains periodic k or pi, and doesn't already have Z or \in \mathbb{Z}
+    if ((/k\s*\\pi|k2\\pi|2k\\pi|k\s*pi|\bk\b/i.test(inner)) && !/\\mathbb\{Z\}|k\s*\\in/i.test(inner)) {
+      const cleanInner = inner.trim().replace(/,\s*$/, '');
+      return `${prefix}${cleanInner}, \\, k \\in \\mathbb{Z}${suffix}`;
+    }
+    return _full;
+  });
+
   m = m.replace(/(?<!\\)\b(in|thuộc)\b/g, ' \\in ');
   m = m.replace(/(?<!\\)\b(notin|không thuộc)\b/g, ' \\notin ');
 
@@ -227,11 +242,19 @@ function convertPlainTextMathToLatex(plainText: string): string {
   // 8. Points and Coordinates: A(1; 2), M(0; 1; -2), I(0; 2), CĐ(0; 2), CT(2; -2)
   replaceOutside(/\b([A-Z]|CĐ|CT)\s*\(\s*[-+]?\d+\s*;\s*[-+]?\d+(?:\s*;\s*[-+]?\d+)?\s*\)/g, (m) => `$${normalizeMathExpression(m)}$` );
 
-  // 9. Real set domains: "TXĐ: D = R \ {1}", "R \ {-1}", "R \ {0}", "\mathbb{R} \ {k2\pi}"
+  // 9. Real set domains: "TXĐ: D = R \ {1}", "R \ {-1}", "D = R \ {pi/2 + kpi}", "D = R"
   replaceOutside(
-    /(?:D\s*=\s*)?(?:\\mathbb\{[RNZQ]\}|\b[RNZQ]\b)\s*(?:\\setminus|\\backslash|\\+|\/)+\s*\\?\{([^}]+)\}/g,
-    (_m, setVal) => `$\\mathbb{R} \\setminus \\{${normalizeMathExpression(setVal)}\\}$`
+    /(?:(D\s*=\s*))?(?:\\mathbb\{[RNZQ]\}|\b[RNZQ]\b)\s*(?:\\setminus|\\backslash|\\+|\/)+\s*\\?\{([^}]+)\}(?:\s*,?\s*\(?(?:k\s*(?:\\in|in|thuộc)\s*(?:\\mathbb\{Z\}|Z))\)?)?/gi,
+    (_m, dPrefix, setVal) => {
+      let norm = normalizeMathExpression(setVal);
+      if ((/k\s*\\pi|k2\\pi|2k\\pi|k\s*pi|\bk\b/i.test(norm)) && !/\\mathbb\{Z\}/.test(norm)) {
+        norm = norm.replace(/,\s*$/, '') + ', \\, k \\in \\mathbb{Z}';
+      }
+      const prefix = dPrefix ? 'D = ' : '';
+      return `$${prefix}\\mathbb{R} \\setminus \\{${norm}\\}$`;
+    }
   );
+  replaceOutside(/\b(D\s*=\s*(?:\\mathbb\{R\}|R))\b(?![a-zA-Z\\])/g, () => '$D = \\mathbb{R}$');
 
   // 10. Pi occurrences with coefficients or fractions: "2pi", "pi/2", "x = pi", "chu kỳ T = 2pi", "số pi", "bằng pi"
   replaceOutside(/(?<![a-zA-Z\\])((?:[0-9]*k|[0-9]+)?(?:pi|π)(?:\/\d+)?|\\pi)(?![a-zA-Z])/gi, (m) => `$${normalizeMathExpression(m)}$`);

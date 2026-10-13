@@ -519,7 +519,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                       {currentStudent.name}
                     </div>
                     <div className="text-[10px] text-emerald-600 font-medium truncate">
-                      {currentStudent.className || 'Lớp 12A1'} • Cấp {currentStudent.level}
+                      {currentStudent.className ? `Lớp ${currentStudent.className}` : 'Học Sinh'} • Cấp {currentStudent.level}
                     </div>
                   </div>
                 </div>

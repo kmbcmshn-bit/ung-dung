@@ -122,13 +122,13 @@ export const AssignExamModal: React.FC<AssignExamModalProps> = ({
   const handleConfirmAssignment = async () => {
     setIsSubmitting(true);
 
-    let targetClassName = activeClass?.name || '12A1';
+    let targetClassName = activeClass?.name || 'Lớp học';
     let targetClassId = selectedClassId;
     let groupName = assignMode === 'group' ? (customGroupName.trim() || selectedGroup) : undefined;
     let assignedStudentList: Student[] = [];
 
     if (assignMode === 'class') {
-      assignedStudentList = classStudents.length > 0 ? classStudents : students.slice(0, 45);
+      assignedStudentList = classStudents;
     } else if (assignMode === 'group') {
       // Group: select sample from students or first 15
       assignedStudentList = students.slice(0, 15);

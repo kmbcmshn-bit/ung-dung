@@ -215,7 +215,7 @@ export const VariantPreviewModal: React.FC<VariantPreviewModalProps> = ({
                       {exam.targetAssignment ? (
                         <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded border border-emerald-300">
                           {exam.targetAssignment.type === 'class'
-                            ? `Đề dành cho: Lớp ${exam.targetAssignment.targetClassName || '12A1'}`
+                            ? `Đề dành cho: Lớp ${exam.targetAssignment.targetClassName || 'đã chọn'}`
                             : exam.targetAssignment.type === 'group'
                             ? `Đề dành cho: ${exam.targetAssignment.groupName}`
                             : `Đề dành cho: ${exam.targetAssignment.studentIds?.length || 0} học sinh`}

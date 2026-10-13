@@ -13,26 +13,6 @@ export const INITIAL_TEACHER: TeacherProfile = {
 
 export const INITIAL_CLASSES: ClassRoom[] = [
   {
-    id: 'class-12a1',
-    name: '12A1',
-    grade: 'Khối 12',
-    schoolName: 'THPT Võ Thị Sáu',
-    academicYear: '2026 - 2027',
-    description: 'Lớp 12A1 - THPT Võ Thị Sáu - Ban Tự Nhiên - Lớp Trọng Điểm Toán (Năm học 2026 - 2027)',
-    studentCount: 45,
-    createdAt: '2026-09-05T08:00:00Z',
-  },
-  {
-    id: 'class-12a2',
-    name: '12A2',
-    grade: 'Khối 12',
-    schoolName: 'THPT Võ Thị Sáu',
-    academicYear: '2026 - 2027',
-    description: 'Lớp 12A2 - THPT Võ Thị Sáu - Ban Cơ Bản & Xã Hội',
-    studentCount: 40,
-    createdAt: '2026-09-05T08:00:00Z',
-  },
-  {
     id: 'class-11a1',
     name: '11A1',
     grade: 'Khối 11',
@@ -105,7 +85,7 @@ const VIETNAMESE_NAME_PRESETS = [
 export const INITIAL_STUDENTS: Student[] = VIETNAMESE_NAME_PRESETS.map((item, idx) => {
   const pad = String(idx + 1).padStart(2, '0');
   const code = 2511404880 + idx * 20;
-  const username = `tranan12a1vts2627_${pad}`;
+  const username = `tranan11a1vts2627_${pad}`;
   return {
     id: `st-${pad}`,
     name: `${item.hoVaChuLot} ${item.ten}`,
@@ -116,8 +96,8 @@ export const INITIAL_STUDENTS: Student[] = VIETNAMESE_NAME_PRESETS.map((item, id
     username,
     password: 'password123',
     isAccountActive: true,
-    classId: 'class-12a1',
-    className: '12A1',
+    classId: 'class-11a1',
+    className: '11A1',
     avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}&backgroundColor=${idx % 2 === 0 ? 'b6e3f4' : 'ffd5dc'}`,
     level: (idx % 3) + 1,
     badgeTitle: idx === 0 ? 'Thần Đồng Toán Học' : idx < 5 ? 'Học Sinh Chăm Chỉ' : 'Chiến Binh Lớp Học',

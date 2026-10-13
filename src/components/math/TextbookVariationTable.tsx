@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { MathText } from './MathText';
 
 export interface VariationTableData {
-  type?: 'cubic' | 'rational' | 'quartic' | 'custom';
+  type?: 'cubic' | 'rational' | 'quartic' | 'asymptote_two' | 'custom';
   xValues?: string[];
   yPrimeValues?: string[]; // signs or zeros
   yValues?: {
@@ -19,30 +19,34 @@ export interface VariationTableData {
 export const TextbookVariationTable: React.FC<{
   data?: VariationTableData;
   cValue?: number;
-  type?: 'cubic' | 'rational' | 'quartic';
+  type?: 'cubic' | 'rational' | 'quartic' | 'asymptote_two';
   fontSize?: 'normal' | 'large' | 'xlarge';
 }> = ({ data, cValue = 2, type, fontSize = 'large' }) => {
-  const initialType: 'cubic' | 'rational' | 'quartic' =
+  const initialType: 'cubic' | 'rational' | 'quartic' | 'asymptote_two' =
     type || (data?.type && data.type !== 'custom' ? data.type : 'cubic');
-  const [activeType, setActiveType] = useState<'cubic' | 'rational' | 'quartic'>(initialType);
+  const [activeType, setActiveType] = useState<'cubic' | 'rational' | 'quartic' | 'asymptote_two'>(initialType);
 
   const isRational = activeType === 'rational';
   const isQuartic = activeType === 'quartic';
   const isCubic = activeType === 'cubic';
+  const isAsymptoteTwo = activeType === 'asymptote_two';
 
   const yPeak = data?.yValues?.peak || `${cValue}`;
   const yValley = data?.yValues?.valley || `${cValue - 4}`;
 
   let xValues = data?.xValues;
   if (!xValues) {
-    if (isRational) xValues = ['-\\infty', '2', '+\\infty'];
+    if (isAsymptoteTwo) xValues = ['-\\infty', '-1', '1', '+\\infty'];
+    else if (isRational) xValues = ['-\\infty', '2', '+\\infty'];
     else if (isQuartic) xValues = ['-\\infty', '-1', '0', '1', '+\\infty'];
     else xValues = ['-\\infty', '0', '2', '+\\infty'];
   }
 
   const caption =
     data?.caption ||
-    (isRational
+    (isAsymptoteTwo
+      ? 'Bảng biến thiên hàm phân thức có 2 đường tiệm cận đứng x = -1 và x = 1 (Chuẩn Đề 10 - Câu 3)'
+      : isRational
       ? 'Bảng biến thiên hàm phân thức y = (ax+b)/(cx+d)'
       : isQuartic
       ? 'Bảng biến thiên hàm số trùng phương y = ax^4 + bx^2 + c'
@@ -73,7 +77,16 @@ export const TextbookVariationTable: React.FC<{
               isRational ? 'bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
             }`}
           >
-            Phân Thức (||)
+            Phân Thức (1 Tiệm Cận)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveType('asymptote_two')}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+              isAsymptoteTwo ? 'bg-emerald-700 text-white shadow-xs' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
+            2 Tiệm Cận (Đề 10 Câu 3)
           </button>
           <button
             type="button"
@@ -108,7 +121,19 @@ export const TextbookVariationTable: React.FC<{
             <MathText content="$y'$" size="lg" />
           </div>
           <div className="flex-1 flex items-center px-4 py-2 font-bold">
-            {isRational ? (
+            {isAsymptoteTwo ? (
+              <div className="w-full flex items-center justify-around text-lg">
+                <span className="text-emerald-700 font-black text-xl">+</span>
+                <span className="text-slate-800 font-mono font-black tracking-tighter text-base px-2 py-0.5 bg-slate-100 rounded border border-slate-300">
+                  ||
+                </span>
+                <span className="text-emerald-700 font-black text-xl">+</span>
+                <span className="text-slate-800 font-mono font-black tracking-tighter text-base px-2 py-0.5 bg-slate-100 rounded border border-slate-300">
+                  ||
+                </span>
+                <span className="text-rose-700 font-black text-xl">-</span>
+              </div>
+            ) : isRational ? (
               <div className="w-full flex items-center justify-around text-lg">
                 <span className="text-emerald-700 font-black text-xl">+</span>
                 <span className="text-slate-800 font-mono font-black tracking-tighter text-base px-2 py-0.5 bg-slate-100 rounded border border-slate-300">
@@ -145,7 +170,74 @@ export const TextbookVariationTable: React.FC<{
           </div>
 
           <div className="flex-1 relative p-3 h-32 flex items-center justify-between">
-            {isRational ? (
+            {isAsymptoteTwo ? (
+              // 2 Asymptotes (x = -1, x = 1) from PDF page 1 Câu 3
+              <div className="w-full flex items-center justify-between h-full px-2 relative">
+                {/* Branch 1: -inf -> +inf */}
+                <div className="flex-1 flex flex-col justify-between items-center h-full relative pr-2">
+                  <div className="absolute top-1 right-2 text-xs sm:text-sm font-bold text-emerald-800">
+                    <MathText content="$+\\infty$" size="sm" />
+                  </div>
+                  <svg className="w-full h-full" viewBox="0 0 120 70" preserveAspectRatio="none">
+                    <defs>
+                      <marker id="arrow-asymp1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#047857" />
+                      </marker>
+                    </defs>
+                    <line x1="15" y1="58" x2="105" y2="14" stroke="#047857" strokeWidth="2.5" markerEnd="url(#arrow-asymp1)" />
+                  </svg>
+                  <div className="absolute bottom-1 left-2 text-xs sm:text-sm font-bold text-emerald-800">
+                    <MathText content="$-\\infty$" size="sm" />
+                  </div>
+                </div>
+
+                {/* Double vertical line at x = -1 */}
+                <div className="h-full flex items-center justify-center px-2 border-x-2 border-slate-800 bg-slate-100/60">
+                  <span className="text-slate-800 font-mono font-black tracking-tighter text-base select-none">||</span>
+                </div>
+
+                {/* Branch 2: -inf -> +inf */}
+                <div className="flex-1 flex flex-col justify-between items-center h-full relative px-2">
+                  <div className="absolute top-1 right-2 text-xs sm:text-sm font-bold text-emerald-800">
+                    <MathText content="$+\\infty$" size="sm" />
+                  </div>
+                  <svg className="w-full h-full" viewBox="0 0 120 70" preserveAspectRatio="none">
+                    <defs>
+                      <marker id="arrow-asymp2" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#047857" />
+                      </marker>
+                    </defs>
+                    <line x1="15" y1="58" x2="105" y2="14" stroke="#047857" strokeWidth="2.5" markerEnd="url(#arrow-asymp2)" />
+                  </svg>
+                  <div className="absolute bottom-1 left-2 text-xs sm:text-sm font-bold text-emerald-800">
+                    <MathText content="$-\\infty$" size="sm" />
+                  </div>
+                </div>
+
+                {/* Double vertical line at x = 1 */}
+                <div className="h-full flex items-center justify-center px-2 border-x-2 border-slate-800 bg-slate-100/60">
+                  <span className="text-slate-800 font-mono font-black tracking-tighter text-base select-none">||</span>
+                </div>
+
+                {/* Branch 3: +inf -> 1 */}
+                <div className="flex-1 flex flex-col justify-between items-center h-full relative pl-2">
+                  <div className="absolute top-1 left-2 text-xs sm:text-sm font-bold text-emerald-800">
+                    <MathText content="$+\\infty$" size="sm" />
+                  </div>
+                  <svg className="w-full h-full" viewBox="0 0 120 70" preserveAspectRatio="none">
+                    <defs>
+                      <marker id="arrow-asymp3" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#b91c1c" />
+                      </marker>
+                    </defs>
+                    <line x1="15" y1="14" x2="105" y2="58" stroke="#b91c1c" strokeWidth="2.5" markerEnd="url(#arrow-asymp3)" />
+                  </svg>
+                  <div className="absolute bottom-1 right-2 text-xs sm:text-sm font-bold text-slate-800">
+                    <MathText content="$1$" size="sm" />
+                  </div>
+                </div>
+              </div>
+            ) : isRational ? (
               // Rational function: two increasing branches separated by double vertical asymptote line
               <div className="w-full flex items-center justify-between h-full px-4 relative">
                 {/* Branch 1: from y_0 up to +inf */}

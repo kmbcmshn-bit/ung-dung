@@ -36,7 +36,7 @@ export const Leaderboard: React.FC = () => {
           <div className="space-y-1 text-center md:text-left">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 backdrop-blur-xs text-xs font-semibold">
               <Trophy className="w-3.5 h-3.5 text-amber-200" />
-              Bảng Vinh Danh Lớp 12A1
+              Bảng Vinh Danh Học Sinh {currentStudent?.className ? `Lớp ${currentStudent.className}` : 'Xuất Sắc'}
             </div>
             <h2 className="text-2xl font-bold tracking-tight">
               Đường Đua Tri Thức & Điểm Thưởng XP
