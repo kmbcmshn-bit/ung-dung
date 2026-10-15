@@ -4,6 +4,7 @@ export interface TeacherProfile {
   id: string;
   name: string;
   email: string;
+  username?: string;
   phone?: string;
   schoolName: string;
   subject: string;
@@ -214,6 +215,7 @@ export interface Submission {
   mcqScore: number;
   essayScore: number;
   totalScore: number;
+  score?: number;
   status: 'pending_ai' | 'ai_graded' | 'confirmed';
   essayGrading?: EssayGradingResult;
   complaintId?: string;

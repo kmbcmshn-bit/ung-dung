@@ -4,6 +4,7 @@ export const INITIAL_TEACHER: TeacherProfile = {
   id: 'teacher-1',
   name: 'Thầy Trịnh Tuấn Kiệt',
   email: 'tuankiet.toan@edusmart.edu.vn',
+  username: 'tuankiet',
   phone: '0908123456',
   schoolName: 'THPT Võ Thị Sáu',
   subject: 'Toán học THPT (GDPT 2018)',

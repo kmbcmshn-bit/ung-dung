@@ -23,13 +23,34 @@ import {
   INITIAL_COMPLAINTS,
 } from '../data/mockData';
 import { generateStudentUsername } from '../utils/vietnameseExcelParser';
+import {
+  subscribeClasses,
+  syncSaveClass,
+  syncDeleteClass,
+  subscribeStudents,
+  syncSaveStudent,
+  syncBatchSaveStudents,
+  syncDeleteStudent,
+  subscribeExams,
+  syncSaveExam,
+  syncDeleteExam,
+  subscribeSubmissions,
+  syncSaveSubmission,
+  syncDeleteSubmission,
+  syncUpdateSubmissionScore,
+  subscribeComplaints,
+  syncSaveComplaint,
+  syncUpdateComplaintStatus,
+  subscribeTeacherProfile,
+  syncSaveTeacherProfile,
+} from '../firebase';
 
 export interface AppContextType {
   role: UserRole;
   setRole: (role: UserRole) => void;
   isAuthenticated: boolean;
   teacherProfile: TeacherProfile;
-  teacherLogin: (email: string, password?: string) => { success: boolean; message: string; teacher: TeacherProfile };
+  teacherLogin: (usernameOrEmail: string, password?: string) => { success: boolean; message: string; teacher: TeacherProfile };
   teacherRegister: (profile: Partial<TeacherProfile>, password?: string) => { success: boolean; message: string; teacher: TeacherProfile };
   teacherLogout: () => void;
   classes: ClassRoom[];
@@ -259,6 +280,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.COMPLAINTS, JSON.stringify(complaints));
   }, [complaints]);
 
+  // --- REAL-TIME FIRESTORE SYNCHRONIZATION ACROSS ALL DEVICES ---
+  useEffect(() => {
+    // 1. Classes subscription
+    const unsubClasses = subscribeClasses((remoteClasses) => {
+      if (remoteClasses && remoteClasses.length > 0) {
+        setClasses(remoteClasses);
+      } else {
+        INITIAL_CLASSES.forEach(c => syncSaveClass(c).catch(console.error));
+      }
+    });
+
+    // 2. Students subscription
+    const unsubStudents = subscribeStudents((remoteStudents) => {
+      if (remoteStudents && remoteStudents.length > 0) {
+        setStudents(remoteStudents);
+      } else {
+        const filtered = INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
+        syncBatchSaveStudents(filtered).catch(console.error);
+      }
+    });
+
+    // 3. Exams subscription (Sync exams created by teacher, exclude default mock)
+    const unsubExams = subscribeExams((remoteExams) => {
+      const filtered = (remoteExams || []).filter(
+        e => e && e.id !== 'exam-1' && !e.title?.includes('Kiểm tra ĐTX1 - Khảo sát')
+      );
+      setExams(filtered);
+      setExam(prev => {
+        if (!prev) return filtered.length > 0 ? filtered[0] : null;
+        const exists = filtered.find(e => e.id === prev.id);
+        return exists || (filtered.length > 0 ? filtered[0] : null);
+      });
+    });
+
+    // 4. Submissions subscription
+    const unsubSubmissions = subscribeSubmissions((remoteSubs) => {
+      if (remoteSubs) {
+        setSubmissions(remoteSubs);
+      }
+    });
+
+    // 5. Complaints subscription
+    const unsubComplaints = subscribeComplaints((remoteComps) => {
+      if (remoteComps) {
+        setComplaints(remoteComps);
+      }
+    });
+
+    // 6. Teacher profile subscription
+    const unsubTeacher = subscribeTeacherProfile((remoteTeacher) => {
+      if (remoteTeacher && (remoteTeacher.email || remoteTeacher.username)) {
+        setTeacherProfile(remoteTeacher);
+      } else {
+        syncSaveTeacherProfile(INITIAL_TEACHER).catch(console.error);
+      }
+    });
+
+    return () => {
+      unsubClasses();
+      unsubStudents();
+      unsubExams();
+      unsubSubmissions();
+      unsubComplaints();
+      unsubTeacher();
+    };
+  }, []);
+
   // Derived current student safely: if currentStudentId is explicitly chosen, find it
   const currentStudent = currentStudentId
     ? students.find(s => s.id === currentStudentId) || null
@@ -272,23 +360,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentStudentIdState(id);
   };
 
-  // --- CLASS ACTIONS ---
+  // --- CLASS ACTIONS (WITH FIRESTORE REAL-TIME SYNC) ---
   const addClass = (newClass: ClassRoom) => {
     setClasses(prev => [...prev, newClass]);
+    syncSaveClass(newClass).catch(console.error);
   };
 
   const updateClass = (updated: ClassRoom) => {
     setClasses(prev => prev.map(c => (c.id === updated.id ? updated : c)));
+    syncSaveClass(updated).catch(console.error);
   };
 
   const deleteClass = (id: string) => {
     setClasses(prev => prev.filter(c => c.id !== id));
+    syncDeleteClass(id).catch(console.error);
     // Also remove students belonging to this class
+    const toRemoveStudents = students.filter(s => s.classId === id);
+    toRemoveStudents.forEach(st => syncDeleteStudent(st.id).catch(console.error));
     setStudents(prev => prev.filter(s => s.classId !== id));
     // Also remove submissions of students in this class
     setSubmissions(prev => prev.filter(sub => {
       const student = students.find(s => s.id === sub.studentId);
-      return student ? student.classId !== id : true;
+      if (student && student.classId === id) {
+        syncDeleteSubmission(sub.id).catch(console.error);
+        return false;
+      }
+      return true;
     }));
     if (currentStudent && currentStudent.classId === id) {
       setCurrentStudentIdState(null);
@@ -368,13 +465,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const combined = [...prev, ...newStudents];
       return combined;
     });
+    syncBatchSaveStudents(newStudents).catch(console.error);
 
     // Update class student count
     setClasses(prev =>
       prev.map(c => {
         if (c.id === classId) {
           const count = (students.filter(s => s.classId === classId).length) + newStudents.length;
-          return { ...c, studentCount: count };
+          const updatedCls = { ...c, studentCount: count };
+          syncSaveClass(updatedCls).catch(console.error);
+          return updatedCls;
         }
         return c;
       })
@@ -443,6 +543,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setStudents(prev => [...prev, newStudent]);
+    syncSaveStudent(newStudent).catch(console.error);
     if (!currentStudentId) {
       setCurrentStudentIdState(studentId);
     }
@@ -490,15 +591,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
+    if (updatedList.length > 0) {
+      syncBatchSaveStudents(updatedList).catch(console.error);
+    }
     return updatedList;
   };
 
   const updateStudent = (updated: Student) => {
     setStudents(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+    syncSaveStudent(updated).catch(console.error);
   };
 
   const deleteStudent = (studentId: string) => {
     setStudents(prev => prev.filter(s => s.id !== studentId));
+    syncDeleteStudent(studentId).catch(console.error);
     if (currentStudentId === studentId) {
       setCurrentStudentIdState(null);
     }
@@ -514,7 +620,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const matchEmail = s.email && s.email.toLowerCase() === cleanInput;
       const matchCode = s.studentCode && s.studentCode.toLowerCase() === cleanInput;
       const matchName = removeVietnameseDiacritics(s.name) === removeVietnameseDiacritics(cleanInput);
-      return matchUser || matchEmail || matchCode || matchName;
+
+      // Support relaxed alpha-numeric match without underscores/hyphens (e.g. 11A1_01_NguyenVanA vs 11A101NguyenVanA)
+      const cleanInputAlpha = cleanInput.replace(/[^a-z0-9]/g, '');
+      const userAlpha = s.username ? s.username.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+      const matchAlpha = cleanInputAlpha && userAlpha && (cleanInputAlpha === userAlpha);
+
+      return matchUser || matchEmail || matchCode || matchName || matchAlpha;
     });
 
     if (!target) {
@@ -544,16 +656,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentStudentIdState(null);
   };
 
-  // Teacher Authentication
-  const teacherLogin = (email: string, _password?: string) => {
-    const cleanEmail = email.trim().toLowerCase();
-    const updated = {
+  // Teacher Authentication - allows login by username or email interchangeably
+  const teacherLogin = (usernameOrEmail: string, _password?: string) => {
+    const cleanInput = usernameOrEmail.trim().toLowerCase();
+    const isEmail = cleanInput.includes('@');
+    const updated: TeacherProfile = {
       ...teacherProfile,
-      email: cleanEmail || teacherProfile.email,
+      ...(isEmail ? { email: cleanInput } : { username: cleanInput }),
     };
     setTeacherProfile(updated);
     setIsAuthenticated(true);
     setRoleState('teacher');
+    syncSaveTeacherProfile(updated).catch(console.error);
     return {
       success: true,
       message: `Đăng nhập thành công! Chào mừng Thầy/Cô ${updated.name}.`,
@@ -562,10 +676,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const teacherRegister = (profile: Partial<TeacherProfile>, _password?: string) => {
+    const emailVal = profile.email?.trim() || 'giaovien@edusmart.edu.vn';
     const newTeacher: TeacherProfile = {
       id: `teacher-${Date.now()}`,
       name: profile.name?.trim() || 'Giáo Viên',
-      email: profile.email?.trim() || 'giaovien@edusmart.edu.vn',
+      email: emailVal,
+      username: profile.username?.trim() || (emailVal.includes('@') ? emailVal.split('@')[0] : 'giaovien'),
       phone: profile.phone?.trim() || '',
       schoolName: profile.schoolName?.trim() || 'THPT Võ Thị Sáu',
       subject: profile.subject?.trim() || 'Toán học THPT (GDPT 2018)',
@@ -575,6 +691,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTeacherProfile(newTeacher);
     setIsAuthenticated(true);
     setRoleState('teacher');
+    syncSaveTeacherProfile(newTeacher).catch(console.error);
     return {
       success: true,
       message: `Đăng ký tài khoản giáo viên thành công! Chào mừng Thầy/Cô ${newTeacher.name}.`,
@@ -600,6 +717,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateExam = (updated: Exam | null) => {
     setExam(updated);
     if (updated) {
+      syncSaveExam(updated).catch(console.error);
       setExams(prev => {
         const idx = prev.findIndex(e => e.id === updated.id);
         if (idx >= 0) {
@@ -620,6 +738,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteExam = (examId: string) => {
+    syncDeleteExam(examId).catch(console.error);
     setExams(prev => {
       const remaining = prev.filter(e => e.id !== examId);
       if (exam?.id === examId) {
@@ -628,10 +747,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return remaining;
     });
     // Remove submissions for this deleted exam
-    setSubmissions(prev => prev.filter(s => s.examId !== examId));
+    setSubmissions(prev => {
+      const remaining = prev.filter(s => {
+        if (s.examId === examId) {
+          syncDeleteSubmission(s.id).catch(console.error);
+          return false;
+        }
+        return true;
+      });
+      return remaining;
+    });
   };
 
   const addSubmission = (sub: Submission) => {
+    syncSaveSubmission(sub).catch(console.error);
     setSubmissions(prev => {
       const filtered = prev.filter(s => !(s.examId === sub.examId && s.studentId === sub.studentId));
       return [sub, ...filtered];
@@ -639,21 +768,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateSubmission = (updated: Submission) => {
+    syncSaveSubmission(updated).catch(console.error);
     setSubmissions(prev => prev.map(s => (s.id === updated.id ? updated : s)));
   };
 
   const deleteSubmission = (submissionId: string) => {
+    syncDeleteSubmission(submissionId).catch(console.error);
     setSubmissions(prev => prev.filter(s => s.id !== submissionId));
   };
 
   const updateSubmissionScore = (submissionId: string, newScore: number, teacherFeedback?: string) => {
+    const bounded = Math.max(0, Math.min(10, Number(newScore.toFixed(2))));
+    const feedbackText = teacherFeedback || 'Điểm đã được Thầy/Cô điều chỉnh lại thủ công.';
+    syncUpdateSubmissionScore(submissionId, bounded, Math.round(bounded * 10), feedbackText).catch(console.error);
+
     setSubmissions(prev => prev.map(s => {
       if (s.id === submissionId) {
-        const bounded = Math.max(0, Math.min(10, Number(newScore.toFixed(2))));
         return {
           ...s,
           totalScore: bounded,
-          teacherReviewNotes: teacherFeedback || 'Điểm đã được Thầy/Cô điều chỉnh lại thủ công.',
+          score: bounded,
+          teacherReviewNotes: feedbackText,
           updatedAt: new Date().toISOString(),
         };
       }
@@ -671,17 +806,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'pending',
     };
 
+    syncSaveComplaint(newComplaint).catch(console.error);
     setComplaints(prev => [newComplaint, ...prev.filter(c => c.id !== newId)]);
 
     // Link complaint to submission
     setSubmissions(prev =>
       prev.map(sub => {
         if (sub.id === complaintData.submissionId) {
-          return {
+          const updatedSub = {
             ...sub,
             complaintId: newId,
-            complaintStatus: 'pending',
+            complaintStatus: 'pending' as const,
           };
+          syncSaveSubmission(updatedSub).catch(console.error);
+          return updatedSub;
         }
         return sub;
       })
@@ -702,6 +840,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const now = new Date().toISOString();
     let targetSubId: string | null = null;
+    const finalFeedback = teacherFeedback || '';
+
+    if (status !== 'pending') {
+      syncUpdateComplaintStatus(complaintId, status, finalFeedback).catch(console.error);
+    }
 
     setComplaints(prev =>
       prev.map(c => {
@@ -710,7 +853,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return {
             ...c,
             status,
-            teacherFeedback: teacherFeedback || c.teacherFeedback,
+            teacherFeedback: finalFeedback || c.teacherFeedback,
             adjustedScore: adjustedScore !== undefined ? adjustedScore : c.adjustedScore,
             reviewedAt: now,
           };
@@ -728,13 +871,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const newEssay = status === 'accepted' && adjustedScore !== undefined
               ? +(Math.max(0, adjustedScore - sub.mcqScore).toFixed(2))
               : sub.essayScore;
-            return {
+            const updatedSub: Submission = {
               ...sub,
               totalScore: newTotal,
+              score: newTotal,
               essayScore: newEssay,
               status: 'confirmed',
               complaintStatus: status,
             };
+            syncSaveSubmission(updatedSub).catch(console.error);
+            return updatedSub;
           }
           return sub;
         })

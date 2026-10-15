@@ -50,18 +50,18 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
     }
   }, [initialRole]);
 
-  // Student Login Form state
-  const [selectedClassId, setSelectedClassId] = useState<string>(classes[0]?.id || '');
+  // Student Login Form state (No class selection needed: username/code auto-identifies class)
   const [studentUsername, setStudentUsername] = useState<string>('');
   const [studentPassword, setStudentPassword] = useState<string>('');
 
-  // Teacher Login Form state
-  const [teacherEmail, setTeacherEmail] = useState<string>(teacherProfile?.email || 'tuankiet.toan@edusmart.edu.vn');
+  // Teacher Login Form state (Supports username or email)
+  const [teacherAccount, setTeacherAccount] = useState<string>(teacherProfile?.username || teacherProfile?.email || 'tuankiet');
   const [teacherPassword, setTeacherPassword] = useState<string>('123456');
 
   // Teacher Register Form state
   const [regName, setRegName] = useState<string>('');
   const [regEmail, setRegEmail] = useState<string>('');
+  const [regUsername, setRegUsername] = useState<string>('');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regSchool, setRegSchool] = useState<string>('THPT Võ Thị Sáu');
   const [regSubject, setRegSubject] = useState<string>('Toán học THPT');
@@ -70,10 +70,6 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
   // Status & Feedback
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [successMsg, setSuccessMsg] = useState<string>('');
-
-  const currentClassStudents = selectedClassId
-    ? students.filter(s => s.classId === selectedClassId)
-    : students;
 
   // Handle Student Login
   const handleStudentLogin = (e: React.FormEvent) => {
@@ -88,7 +84,7 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
 
     const res = studentLogin(studentUsername.trim(), studentPassword.trim());
     if (res.success && res.student) {
-      setSuccessMsg(`Đăng nhập thành công! Chào mừng em ${res.student.name}.`);
+      setSuccessMsg(`Đăng nhập thành công! Chào mừng em ${res.student.name} (Lớp ${res.student.className}).`);
       setRole('student');
       setTimeout(() => {
         if (onSuccess) onSuccess();
@@ -98,18 +94,18 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
     }
   };
 
-  // Handle Teacher Login
+  // Handle Teacher Login (Supports username or email)
   const handleTeacherLogin = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
     setSuccessMsg('');
 
-    if (!teacherEmail.trim()) {
-      setErrorMsg('Vui lòng nhập Email hoặc Tên đăng nhập của Giáo viên.');
+    if (!teacherAccount.trim()) {
+      setErrorMsg('Vui lòng nhập Tên đăng nhập hoặc Email của Giáo viên.');
       return;
     }
 
-    const res = teacherLogin(teacherEmail.trim(), teacherPassword.trim());
+    const res = teacherLogin(teacherAccount.trim(), teacherPassword.trim());
     if (res.success) {
       setSuccessMsg(`Đăng nhập thành công! Chào mừng ${res.teacher.name}.`);
       setRole('teacher');
@@ -117,7 +113,7 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
         if (onSuccess) onSuccess();
       }, 500);
     } else {
-      setErrorMsg(res.message || 'Mật khẩu hoặc email giáo viên chưa đúng.');
+      setErrorMsg(res.message || 'Mật khẩu hoặc tên đăng nhập/email giáo viên chưa đúng.');
     }
   };
 
@@ -135,6 +131,7 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
     const res = teacherRegister({
       name: regName.trim(),
       email: regEmail.trim(),
+      username: regUsername.trim() || regEmail.trim().split('@')[0],
       phone: regPhone.trim(),
       schoolName: regSchool.trim() || 'THPT',
       subject: regSubject.trim() || 'Toán học',
@@ -241,26 +238,6 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
             </div>
 
             <form onSubmit={handleStudentLogin} className="space-y-4 text-xs">
-              {classes.length > 0 && (
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">
-                    Chọn lớp học của em:
-                  </label>
-                  <select
-                    value={selectedClassId}
-                    onChange={(e) => setSelectedClassId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                  >
-                    <option value="">Tất cả các lớp ({students.length} học sinh)</option>
-                    {classes.map(c => (
-                      <option key={c.id} value={c.id}>
-                        Lớp {c.name} ({c.grade} • Sĩ số: {students.filter(s => s.classId === c.id).length})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               <div>
                 <label className="font-semibold text-slate-700 block mb-1">
                   Tên đăng nhập, Mã học sinh (vnEdu) hoặc Họ và tên:
@@ -278,6 +255,9 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
                     required
                   />
                 </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  * Hệ thống tự động nhận diện chính xác lớp học của em qua cấu trúc Tên đăng nhập / Mã học sinh.
+                </p>
               </div>
 
               <div>
@@ -318,7 +298,7 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
                 <span>Tài khoản học sinh trải nghiệm mẫu:</span>
               </div>
               <p className="text-[11px] text-slate-600 leading-relaxed">
-                Em có thể nhập: Tên đăng nhập <strong>tranan11a1vts2627</strong> (hoặc họ tên <strong>Trần Thái An</strong>), Mật khẩu: <strong>123456</strong> để đăng nhập ngay.
+                Em có thể nhập: Tên đăng nhập <strong>tranan11a1vts2627</strong> (hoặc họ tên <strong>Trần Thái An</strong>), Mật khẩu: <strong>123456</strong> để đăng nhập ngay mà không cần chọn lớp.
               </p>
             </div>
           </div>
@@ -376,20 +356,24 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
                 <form onSubmit={handleTeacherLogin} className="space-y-4 text-xs">
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Email hoặc Tên đăng nhập:
+                      Tên đăng nhập hoặc Email của Giáo viên:
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Mail className="w-4 h-4" />
+                        <User className="w-4 h-4" />
                       </div>
                       <input
-                        type="email"
-                        value={teacherEmail}
-                        onChange={(e) => setTeacherEmail(e.target.value)}
-                        placeholder="tuankiet.toan@edusmart.edu.vn"
-                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                        type="text"
+                        value={teacherAccount}
+                        onChange={(e) => setTeacherAccount(e.target.value)}
+                        placeholder="Ví dụ: tuankiet hoặc tuankiet.toan@edusmart.edu.vn"
+                        className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 placeholder:text-slate-400"
+                        required
                       />
                     </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      * Đăng nhập linh hoạt bằng <strong>Tên đăng nhập</strong> (ví dụ: <code className="text-emerald-700 font-semibold bg-emerald-50 px-1 py-0.5 rounded">tuankiet</code>) hoặc <strong>Email</strong>
+                    </p>
                   </div>
 
                   <div>
@@ -404,7 +388,7 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
                         type="password"
                         value={teacherPassword}
                         onChange={(e) => setTeacherPassword(e.target.value)}
-                        placeholder="Nhập mật khẩu giáo viên..."
+                        placeholder="Nhập mật khẩu giáo viên (mặc định: 123456)..."
                         className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                       />
                     </div>
@@ -465,6 +449,19 @@ export const AuthScreen: React.FC<AuthModalProps> = ({ onSuccess, initialRole })
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="font-semibold text-slate-700 block mb-1">
+                        Tên đăng nhập (tùy chọn):
+                      </label>
+                      <input
+                        type="text"
+                        value={regUsername}
+                        onChange={(e) => setRegUsername(e.target.value)}
+                        placeholder="Ví dụ: tuankiet..."
+                        className="w-full p-2.5 rounded-xl border border-slate-300 bg-white text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      />
+                    </div>
+
                     <div>
                       <label className="font-semibold text-slate-700 block mb-1">
                         Trường học công tác:
