@@ -107,6 +107,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [isGeneratorOpen, setIsGeneratorOpen] = useState<boolean>(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState<boolean>(false);
   const [isCreateOrRecreateOpen, setIsCreateOrRecreateOpen] = useState<boolean>(false);
+  const [createModalTab, setCreateModalTab] = useState<'prompt' | 'matrix_file' | 'recreate'>('prompt');
   const [isAssignModalOpen, setIsAssignModalOpen] = useState<boolean>(false);
   const [assignSuccessBanner, setAssignSuccessBanner] = useState<string | null>(null);
   const [gradingSubmission, setGradingSubmission] = useState<Submission | null>(null);
@@ -342,7 +343,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={() => setIsCreateOrRecreateOpen(true)}
+                onClick={() => {
+                  setCreateModalTab('prompt');
+                  setIsCreateOrRecreateOpen(true);
+                }}
                 className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 hover:from-emerald-300 hover:to-teal-200 text-slate-950 font-bold text-xs transition-colors shadow-xs flex items-center justify-center gap-1.5"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
@@ -656,7 +660,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Card 1: Tạo đề theo yêu cầu */}
                   <div
-                    onClick={() => setIsCreateOrRecreateOpen(true)}
+                    onClick={() => {
+                      setCreateModalTab('prompt');
+                      setIsCreateOrRecreateOpen(true);
+                    }}
                     className="bg-white rounded-2xl border border-emerald-200 hover:border-emerald-400 p-5 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-3"
                   >
                     <div className="flex items-center justify-between">
@@ -683,7 +690,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                   {/* Card 2: Theo ma trận up lên từ file */}
                   <div
-                    onClick={() => setIsCreateOrRecreateOpen(true)}
+                    onClick={() => {
+                      setCreateModalTab('matrix_file');
+                      setIsCreateOrRecreateOpen(true);
+                    }}
                     className="bg-white rounded-2xl border border-teal-200 hover:border-teal-400 p-5 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-3"
                   >
                     <div className="flex items-center justify-between">
@@ -710,7 +720,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                   {/* Card 3: Tái tạo đề có sẵn */}
                   <div
-                    onClick={() => setIsCreateOrRecreateOpen(true)}
+                    onClick={() => {
+                      setCreateModalTab('recreate');
+                      setIsCreateOrRecreateOpen(true);
+                    }}
                     className="bg-white rounded-2xl border border-slate-200 hover:border-emerald-300 p-5 shadow-xs hover:shadow-md transition-all cursor-pointer group space-y-3"
                   >
                     <div className="flex items-center justify-between">
@@ -782,7 +795,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                     <button
                       type="button"
-                      onClick={() => setIsCreateOrRecreateOpen(true)}
+                      onClick={() => {
+                        setCreateModalTab('prompt');
+                        setIsCreateOrRecreateOpen(true);
+                      }}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-xs transition-all cursor-pointer shrink-0"
                     >
                       <PlusCircle className="w-3.5 h-3.5" />
@@ -1902,6 +1918,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         onClose={() => setIsCreateOrRecreateOpen(false)}
         onOpenPreview={() => setIsPreviewOpen(true)}
         onOpenAssign={() => setIsAssignModalOpen(true)}
+        initialTab={createModalTab}
       />
 
       <AssignExamModal

@@ -7,6 +7,7 @@ interface VariantGeneratorModalProps {
   onClose: () => void;
   onOpenPreview: () => void;
   onOpenAssign?: () => void;
+  onOpenCreateExam?: () => void;
 }
 
 export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
@@ -14,6 +15,7 @@ export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
   onClose,
   onOpenPreview,
   onOpenAssign,
+  onOpenCreateExam,
 }) => {
   const { exam, generateClassVariants, students, classes } = useApp();
 
@@ -32,6 +34,7 @@ export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
   const [progress, setProgress] = useState<number>(0);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [successInfo, setSuccessInfo] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -62,6 +65,7 @@ export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
       setStatusMessage('Đang bảo toàn độ khó & tự động tính lại đáp án, barem từng mã...');
     }, 1800);
 
+    setErrorMessage(null);
     try {
       const res = await generateClassVariants(finalCount, selectedClassId || undefined);
       clearInterval(batchInterval);
@@ -69,11 +73,13 @@ export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
       setIsGenerating(false);
       if (res.success) {
         setSuccessInfo(res.message);
+      } else {
+        setErrorMessage(res.message || 'Có lỗi xảy ra khi tạo bộ mã đề.');
       }
     } catch (err: any) {
       clearInterval(batchInterval);
       setIsGenerating(false);
-      setStatusMessage('Có lỗi xảy ra khi tạo bộ mã đề.');
+      setErrorMessage('Có lỗi xảy ra khi tạo bộ mã đề.');
     }
   };
 
@@ -105,8 +111,46 @@ export const VariantGeneratorModal: React.FC<VariantGeneratorModalProps> = ({
         </div>
 
         {/* Configuration Body */}
-        {!successInfo ? (
+        {!exam ? (
+          <div className="py-8 text-center space-y-4">
+            <div className="w-16 h-16 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto shadow-sm">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h4 className="font-bold text-slate-900 text-base">Chưa Có Đề Thi Gốc Trong Hệ Thống</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Để tổ chức kiểm tra và sinh các mã đề tương đương cho học sinh, Thầy/Cô cần tạo 1 đề thi gốc trước bằng AI (theo yêu cầu, tải lên file ma trận hoặc tái tạo).
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenCreateExam?.();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-200" />
+                <span>Tạo Đề Thi Gốc Ngay</span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        ) : !successInfo ? (
           <div className="space-y-4">
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
             {/* Isomorphic Principles Info Box */}
             <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-950 space-y-1.5 leading-relaxed">
               <div className="font-bold flex items-center gap-1.5 text-emerald-900">

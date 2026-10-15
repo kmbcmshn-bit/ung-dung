@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+
 export interface ParsedStudentRow {
   stt?: number;
   name: string; // Họ và tên đầy đủ: "Nguyễn Tiến Đạt"
@@ -359,6 +361,26 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     .filter(Boolean);
   if (nonEmpties.length === 0) return true;
 
+  // CRITICAL RULE: If a row has a valid numeric STT (1 to 250) or a student code (6-14 digits)
+  // in one of the first 3 non-empty cells AND has text containing Vietnamese/Latin letters,
+  // it is 100% a student data row, NEVER a banner or header!
+  const hasSttNumber = nonEmpties.slice(0, 3).some(c => /^\d{1,3}$/.test(c) && parseInt(c, 10) > 0 && parseInt(c, 10) < 250);
+  const hasCode = nonEmpties.slice(0, 3).some(c => /^\d{6,14}$/.test(c) || /^HS\d{4,10}$/i.test(c));
+  const hasLetters = nonEmpties.some(c => /[a-zA-ZÀ-ỹ]{2,}/.test(c));
+
+  // Only rows WITHOUT STT numbers can be considered banners or footers (unless it's an explicit table header row like STT + Họ và tên)
+  const isExplicitTableHeader = nonEmpties.some(c => /^(stt|số\s*tt|số\s*thứ\s*tự|no\.?)$/i.test(c)) &&
+    nonEmpties.some(c => /(họ\s*(và|&)?\s*tên|họ\s*(và|&)?\s*(chữ\s*)?lót|tên\s*học\s*sinh|^tên$|mã\s*(hs|học\s*sinh))/i.test(c));
+
+  if (isExplicitTableHeader) {
+    return true;
+  }
+
+  // If it has STT number / student code and letters, it CANNOT be a banner or footer!
+  if ((hasSttNumber || hasCode) && hasLetters) {
+    return false;
+  }
+
   const rowTextAll = nonEmpties.map(c => c.toLowerCase()).join(' ');
 
   // 1. Footer signatures or summaries
@@ -385,7 +407,7 @@ function isHeaderOrBannerRow(row: any[]): boolean {
   if (
     /(lớp\s*[:\-]?\s*[0-9a-zA-Z]|niên\s*(học|khóa)|năm\s*học|học\s*k[ỳì]|trường\s+|sở\s*gd|phòng\s*gd|danh\s*sách\s*học\s*sinh|bảng\s*điểm)/i.test(rowTextAll) &&
     nonEmpties.length <= 4 &&
-    !nonEmpties.some(c => /^(stt|số\s*tt)$/i.test(c))
+    !hasSttNumber
   ) {
     return true;
   }
@@ -396,6 +418,11 @@ function isHeaderOrBannerRow(row: any[]): boolean {
   const hasCodeLabel = nonEmpties.some(c => /(mã\s*(hs|học\s*sinh|định\s*danh)|mshs|sbd)/i.test(c));
 
   if (hasSttLabel && (hasNameLabel || hasCodeLabel)) {
+    return true;
+  }
+
+  // Sub-header row without STT (e.g. ['', '', 'Họ và chữ lót', 'Tên', '', '', ''])
+  if (nonEmpties.some(c => /^(họ\s*(và|&)?\s*(chữ\s*)?lót|họ\s*đệm)$/i.test(c)) && nonEmpties.some(c => /^(tên|tên\s*gọi)$/i.test(c))) {
     return true;
   }
 
@@ -621,19 +648,28 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     // 1. Check if row is a repeated header row (Page 2, Page 3, etc.)
     const isHeader = isHeaderOrBannerRow(row);
     if (isHeader) {
-      // If this row has table header markers (STT + Họ/Tên), re-align columns for the subsequent page!
+      // If this row has table header markers, re-align columns for the subsequent page!
       const potentialCols = inspectHeaderRow(row);
-      if (potentialCols.sttCol !== -1 && (potentialCols.hoCol !== -1 || potentialCols.fullNameCol !== -1 || potentialCols.tenCol !== -1)) {
-        currentHeaderCols = potentialCols;
-        if (
-          currentHeaderCols.hoCol === -1 &&
-          currentHeaderCols.fullNameCol !== -1 &&
-          currentHeaderCols.tenCol !== -1 &&
-          currentHeaderCols.fullNameCol !== currentHeaderCols.tenCol
-        ) {
-          currentHeaderCols.hoCol = currentHeaderCols.fullNameCol;
-          currentHeaderCols.fullNameCol = -1;
-        }
+      if (potentialCols.sttCol !== -1) currentHeaderCols.sttCol = potentialCols.sttCol;
+      if (potentialCols.codeCol !== -1) currentHeaderCols.codeCol = potentialCols.codeCol;
+      if (potentialCols.hoCol !== -1) currentHeaderCols.hoCol = potentialCols.hoCol;
+      if (potentialCols.tenCol !== -1) currentHeaderCols.tenCol = potentialCols.tenCol;
+      if (potentialCols.fullNameCol !== -1) currentHeaderCols.fullNameCol = potentialCols.fullNameCol;
+      if (potentialCols.dobCol !== -1) currentHeaderCols.dobCol = potentialCols.dobCol;
+      if (potentialCols.genderCol !== -1) currentHeaderCols.genderCol = potentialCols.genderCol;
+      if (potentialCols.genderFemaleCol !== -1) currentHeaderCols.genderFemaleCol = potentialCols.genderFemaleCol;
+
+      // When hoCol & tenCol are both detected, prioritize splitting Họ and Tên
+      if (currentHeaderCols.hoCol !== -1 && currentHeaderCols.tenCol !== -1) {
+        currentHeaderCols.fullNameCol = -1;
+      } else if (
+        currentHeaderCols.hoCol === -1 &&
+        currentHeaderCols.fullNameCol !== -1 &&
+        currentHeaderCols.tenCol !== -1 &&
+        currentHeaderCols.fullNameCol !== currentHeaderCols.tenCol
+      ) {
+        currentHeaderCols.hoCol = currentHeaderCols.fullNameCol;
+        currentHeaderCols.fullNameCol = -1;
       }
       // Skip the header row itself: NEVER add a table header as a student!
       continue;
@@ -750,7 +786,7 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     // Approach A: Dedicated Columns
     if (currentHeaderCols.hoCol !== -1 && currentHeaderCols.tenCol !== -1) {
       const rawHo = cleanTextCell(row[currentHeaderCols.hoCol]);
-      const rawTen = cleanTextCell(row[currentHeaderCols.tenCol]);
+      let rawTen = cleanTextCell(row[currentHeaderCols.tenCol]);
 
       // Check if rawTen is actually a date, student code, gender, or pure number
       const isTenInvalid =
@@ -758,11 +794,26 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
         /^\d{1,2}[\/\-\.]\d{1,2}/.test(rawTen) ||
         /^(nam|nữ|nu|x|f|m)$/i.test(rawTen);
 
-      if (!isTenInvalid) {
-        tenPart = rawTen;
+      if (isTenInvalid) {
+        rawTen = '';
+      }
+
+      // If rawTen is empty, look at the cell immediately after hoCol or tenCol
+      if (!rawTen && row[currentHeaderCols.hoCol + 1] !== undefined) {
+        const nextVal = cleanTextCell(row[currentHeaderCols.hoCol + 1]);
+        if (
+          nextVal &&
+          /[a-zA-ZÀ-ỹ]{2,}/.test(nextVal) &&
+          !/^\d+$/.test(nextVal) &&
+          !/^(nam|nữ|nu|x|f|m)$/i.test(nextVal) &&
+          !/^\d{1,2}[\/\-\.]/.test(nextVal)
+        ) {
+          rawTen = nextVal;
+        }
       }
 
       hoPart = rawHo;
+      tenPart = rawTen;
 
       if (hoPart && tenPart) {
         if (hoPart.toLowerCase().endsWith(tenPart.toLowerCase())) {
@@ -777,6 +828,23 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
       }
     } else if (currentHeaderCols.fullNameCol !== -1 && row[currentHeaderCols.fullNameCol] !== undefined) {
       rawFullName = cleanTextCell(row[currentHeaderCols.fullNameCol]);
+      // Also inspect if adjacent cell has the given name (e.g. vnEdu split)
+      if (row[currentHeaderCols.fullNameCol + 1] !== undefined) {
+        const nextVal = cleanTextCell(row[currentHeaderCols.fullNameCol + 1]);
+        if (
+          nextVal &&
+          /[a-zA-ZÀ-ỹ]{2,}/.test(nextVal) &&
+          !/^\d+$/.test(nextVal) &&
+          !/^(nam|nữ|nu|x|f|m)$/i.test(nextVal) &&
+          !/^\d{1,2}[\/\-\.]/.test(nextVal)
+        ) {
+          if (!rawFullName.toLowerCase().endsWith(nextVal.toLowerCase())) {
+            hoPart = rawFullName;
+            tenPart = nextVal;
+            rawFullName = `${hoPart} ${tenPart}`.trim();
+          }
+        }
+      }
     }
 
     // Approach B: Fallback - If designated columns did not yield a valid name,
@@ -948,7 +1016,7 @@ export function parseVietnameseSchoolWorkbook(workbook: any, preferredClassName?
   // If single sheet, use standard parser
   if (workbook.SheetNames.length === 1) {
     const sheetName = workbook.SheetNames[0];
-    const rawJson: any[][] = require('xlsx').utils.sheet_to_json(workbook.Sheets[sheetName], {
+    const rawJson: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
       header: 1,
       defval: '',
       blankrows: false,
@@ -964,7 +1032,7 @@ export function parseVietnameseSchoolWorkbook(workbook: any, preferredClassName?
       removeVietnameseDiacritics(name).toLowerCase().includes(cleanPref)
     );
     if (matchingSheet) {
-      const rawJson: any[][] = require('xlsx').utils.sheet_to_json(workbook.Sheets[matchingSheet], {
+      const rawJson: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[matchingSheet], {
         header: 1,
         defval: '',
         blankrows: false,
@@ -979,7 +1047,7 @@ export function parseVietnameseSchoolWorkbook(workbook: any, preferredClassName?
   // 2. Parse all sheets and see if they contain sequential parts of the same class list
   const sheetResults: { sheetName: string; result: ParseExcelResult }[] = [];
   for (const sheetName of workbook.SheetNames) {
-    const rawJson: any[][] = require('xlsx').utils.sheet_to_json(workbook.Sheets[sheetName], {
+    const rawJson: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
       header: 1,
       defval: '',
       blankrows: false,

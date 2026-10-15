@@ -27,6 +27,7 @@ interface CreateOrRecreateExamModalProps {
   onClose: () => void;
   onOpenPreview: () => void;
   onOpenAssign?: () => void;
+  initialTab?: 'prompt' | 'matrix_file' | 'recreate';
 }
 
 export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps> = ({
@@ -34,6 +35,7 @@ export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps>
   onClose,
   onOpenPreview,
   onOpenAssign,
+  initialTab = 'prompt',
 }) => {
   const {
     exam,
@@ -45,8 +47,14 @@ export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps>
     updateExam,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'prompt' | 'matrix_file' | 'recreate'>('prompt');
+  const [activeTab, setActiveTab] = useState<'prompt' | 'matrix_file' | 'recreate'>(initialTab);
   const [targetClassId, setTargetClassId] = useState<string>(() => classes[0]?.id || '');
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, isOpen]);
 
   // Tab 1: Custom Prompt state
   const [customPrompt, setCustomPrompt] = useState<string>(
@@ -184,6 +192,7 @@ Phần III: 1 câu tự luận:
       gradeColumn,
       durationMinutes,
       totalPoints: 10.0,
+      targetClassId,
     });
 
     setIsLoading(false);
@@ -204,7 +213,14 @@ Phần III: 1 câu tự luận:
       uploadedFile.type,
       uploadedFile.name,
       uploadedFile.extractedText,
-      uploadedFile.parsedStructure?.matrixSummary || fileInstructions
+      uploadedFile.parsedStructure?.matrixSummary || fileInstructions,
+      {
+        targetClassId,
+        subject,
+        gradeColumn,
+        durationMinutes,
+        totalPoints: 10.0,
+      }
     );
 
     setIsLoading(false);
@@ -219,7 +235,13 @@ Phần III: 1 câu tự luận:
     setStatusMessage('Gemini AI đang phân tích đề gốc và tái tạo số liệu bài toán...');
     setSuccessResult(null);
 
-    const res = await recreateExistingExam(recreateInstruction);
+    const res = await recreateExistingExam(recreateInstruction, {
+      targetClassId,
+      subject,
+      gradeColumn,
+      durationMinutes,
+      totalPoints: 10.0,
+    });
 
     setIsLoading(false);
     if (res.success) {

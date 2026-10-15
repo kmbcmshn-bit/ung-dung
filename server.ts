@@ -31,13 +31,43 @@ if (apiKey) {
 }
 
 /**
+ * Safe JSON parser that strips markdown code blocks and handles edge cases
+ */
+function safeJsonParse(text: string): any {
+  if (!text) return null;
+  let clean = text.trim();
+  if (clean.startsWith('```')) {
+    clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  }
+  try {
+    return JSON.parse(clean);
+  } catch (e) {
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(clean.substring(firstBrace, lastBrace + 1));
+      } catch (e2) {}
+    }
+    const firstBracket = clean.indexOf('[');
+    const lastBracket = clean.lastIndexOf(']');
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+      try {
+        return JSON.parse(clean.substring(firstBracket, lastBracket + 1));
+      } catch (e3) {}
+    }
+    throw e;
+  }
+}
+
+/**
  * Robust Gemini model caller with cascade:
- * Prioritizes gemini-flash-latest (fast, live, highly available),
- * falls back to gemini-3.8-flash if needed.
+ * Uses gemini-3.8-flash (primary, high capability),
+ * falls back to gemini-3.5-flash-lite.
  */
 async function callGemini(contents: any, config?: any) {
   if (!ai) throw new Error('Gemini API client not initialized');
-  const models = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+  const models = ['gemini-3.8-flash', 'gemini-3.5-flash-lite'];
   let lastErr: any = null;
 
   // Format contents for @google/genai SDK
@@ -130,7 +160,7 @@ ${JSON.stringify(baseExam.questions, null, 2)}
         });
 
         if (response.text) {
-          const aiVariants: any[] = JSON.parse(response.text);
+          const aiVariants: any[] = safeJsonParse(response.text);
           if (Array.isArray(aiVariants) && aiVariants.length > 0) {
             // Build map of generated variants
             const variantMap: Record<string, any> = {};
@@ -398,7 +428,7 @@ Trả về DUY NHẤT một đối tượng JSON hợp lệ theo cấu trúc sau
         });
 
         if (response.text) {
-          const gradingResult = JSON.parse(response.text);
+          const gradingResult = safeJsonParse(response.text);
           const computedScore = typeof gradingResult.score === 'number' ? gradingResult.score : Number(maxPoints || 2.0) * 0.8;
           const maxP = typeof gradingResult.maxPoints === 'number' ? gradingResult.maxPoints : Number(maxPoints || 2.0);
           return res.json({
@@ -619,7 +649,7 @@ Trả về duy nhất JSON hợp lệ theo định dạng sau:
         });
 
         if (response.text) {
-          const generatedExam = JSON.parse(response.text);
+          const generatedExam = safeJsonParse(response.text);
           return res.json({ success: true, exam: generatedExam, source: 'gemini' });
         }
       } catch (err: any) {
@@ -845,7 +875,7 @@ Trả về DUY NHẤT một JSON hợp lệ:
         });
 
         if (response.text) {
-          const parsedExam = JSON.parse(response.text);
+          const parsedExam = safeJsonParse(response.text);
           return res.json({ success: true, exam: parsedExam, source: 'gemini_multimodal' });
         }
       } catch (err: any) {
@@ -1060,7 +1090,7 @@ Trả về DUY NHẤT một JSON hợp lệ:
         });
 
         if (response.text) {
-          const recreated = JSON.parse(response.text);
+          const recreated = safeJsonParse(response.text);
           return res.json({ success: true, exam: recreated, source: 'gemini_recreated' });
         }
       } catch (err: any) {
