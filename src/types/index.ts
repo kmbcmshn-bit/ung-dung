@@ -94,7 +94,7 @@ export interface ExamQuestion {
   sectionTitle?: string;
   content: string;
   stimulus?: {
-    type: 'table' | 'formula' | 'diagram' | 'text' | 'variation_table' | 'graph' | 'sign_table' | 'statistics';
+    type: 'table' | 'formula' | 'diagram' | 'text' | 'variation_table' | 'graph' | 'sign_table' | 'statistics' | 'geometry' | 'geometry_3d';
     data: string;
     caption?: string;
   };
@@ -218,6 +218,7 @@ export interface Submission {
   essayGrading?: EssayGradingResult;
   complaintId?: string;
   complaintStatus?: 'pending' | 'accepted' | 'rejected';
+  teacherReviewNotes?: string;
 }
 
 export interface GradebookRecord {

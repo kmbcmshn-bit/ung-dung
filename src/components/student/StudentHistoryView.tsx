@@ -6,6 +6,7 @@ import { TextbookVariationTable } from '../math/TextbookVariationTable';
 import { TextbookGraph } from '../math/TextbookGraph';
 import { TextbookSignTable } from '../math/TextbookSignTable';
 import { TextbookStatisticsTable } from '../math/TextbookStatisticsTable';
+import { TextbookGeometry, GeometryType } from '../math/TextbookGeometry';
 import { getQuestionPartInfo } from '../../utils/examGenerator';
 import {
   FileCheck,
@@ -327,9 +328,32 @@ export const StudentHistoryView: React.FC<StudentHistoryViewProps> = ({ onBack, 
                     <TextbookSignTable />
                   </div>
                 )}
-                {q.stimulus?.type === 'statistics' && (
+                {(q.stimulus?.type === 'statistics' || q.content.toLowerCase().includes('mẫu số liệu ghép nhóm') || q.content.toLowerCase().includes('bảng phân bố tần số') || q.content.toLowerCase().includes('bảng thống kê')) && (
                   <div className="my-2">
                     <TextbookStatisticsTable />
+                  </div>
+                )}
+                {(q.stimulus?.type === 'geometry' || q.stimulus?.type === 'geometry_3d' || q.content.toLowerCase().includes('hình chóp') || q.content.toLowerCase().includes('lăng trụ') || q.content.toLowerCase().includes('hình hộp') || q.content.toLowerCase().includes('hình nón') || q.content.toLowerCase().includes('hình trụ') || q.content.toLowerCase().includes('mặt cầu')) && (
+                  <div className="my-2">
+                    {(() => {
+                      const c = q.content.toLowerCase();
+                      let geomType: GeometryType = 'pyramid_quad';
+                      if (c.includes('lăng trụ')) geomType = 'prism_triangle';
+                      else if (c.includes('chóp') && (c.includes('tam giác') || c.includes('s.abc'))) geomType = 'pyramid_triangle';
+                      else if (c.includes('chóp')) geomType = 'pyramid_quad';
+                      else if (c.includes('hộp') || c.includes('lập phương')) geomType = 'cuboid';
+                      else if (c.includes('nón')) geomType = 'cone';
+                      else if (c.includes('trụ')) geomType = 'cylinder';
+                      else if (c.includes('cầu')) geomType = 'sphere';
+                      else if (c.includes('tam giác')) geomType = 'triangle_plane';
+                      else if (c.includes('đường tròn')) geomType = 'circle_plane';
+                      return (
+                        <TextbookGeometry
+                          type={geomType}
+                          title={q.stimulus?.caption || 'Hình vẽ toán học chuẩn SGK'}
+                        />
+                      );
+                    })()}
                   </div>
                 )}
 

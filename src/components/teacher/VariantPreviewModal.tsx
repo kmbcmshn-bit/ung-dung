@@ -6,6 +6,7 @@ import { TextbookVariationTable } from '../math/TextbookVariationTable';
 import { TextbookSignTable } from '../math/TextbookSignTable';
 import { TextbookGraph } from '../math/TextbookGraph';
 import { TextbookStatisticsTable } from '../math/TextbookStatisticsTable';
+import { TextbookGeometry, GeometryType } from '../math/TextbookGeometry';
 import { getQuestionPartInfo } from '../../utils/examGenerator';
 
 interface VariantPreviewModalProps {
@@ -353,6 +354,30 @@ export const VariantPreviewModal: React.FC<VariantPreviewModalProps> = ({
                             <TextbookStatisticsTable
                               title={`Bảng dữ liệu mẫu ghép nhóm cho Mã đề ${selectedCode}`}
                             />
+                          )}
+
+                          {(q.stimulus?.type === 'geometry' || q.stimulus?.type === 'geometry_3d' || q.content.toLowerCase().includes('hình chóp') || q.content.toLowerCase().includes('lăng trụ') || q.content.toLowerCase().includes('hình hộp') || q.content.toLowerCase().includes('hình nón') || q.content.toLowerCase().includes('hình trụ') || q.content.toLowerCase().includes('mặt cầu')) && (
+                            <div className="my-2">
+                              {(() => {
+                                const c = q.content.toLowerCase();
+                                let geomType: GeometryType = 'pyramid_quad';
+                                if (c.includes('lăng trụ')) geomType = 'prism_triangle';
+                                else if (c.includes('chóp') && (c.includes('tam giác') || c.includes('s.abc'))) geomType = 'pyramid_triangle';
+                                else if (c.includes('chóp')) geomType = 'pyramid_quad';
+                                else if (c.includes('hộp') || c.includes('lập phương')) geomType = 'cuboid';
+                                else if (c.includes('nón')) geomType = 'cone';
+                                else if (c.includes('trụ')) geomType = 'cylinder';
+                                else if (c.includes('cầu')) geomType = 'sphere';
+                                else if (c.includes('tam giác')) geomType = 'triangle_plane';
+                                else if (c.includes('đường tròn')) geomType = 'circle_plane';
+                                return (
+                                  <TextbookGeometry
+                                    type={geomType}
+                                    title={q.stimulus?.caption || `Hình vẽ hình học chuẩn SGK - Mã đề ${selectedCode}`}
+                                  />
+                                );
+                              })()}
+                            </div>
                           )}
 
                           {/* Options if MCQ (Phần I) */}

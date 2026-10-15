@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Lesson, Submission, GradebookRecord } from '../../types';
+import { Lesson, Submission, GradebookRecord, Exam } from '../../types';
 import { VariantGeneratorModal } from './VariantGeneratorModal';
 import { VariantPreviewModal } from './VariantPreviewModal';
 import { GradingModal } from './GradingModal';
@@ -78,6 +78,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     selectExam,
     deleteExam,
     submissions,
+    addSubmission,
     deleteSubmission,
     updateSubmissionScore,
     gradebook,
@@ -1245,7 +1246,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     ) : (
                       filteredSubmissions.map((sub, idx) => {
                         const stObj = students.find((s) => s.id === sub.studentId);
-                        const className = stObj?.className || '12A1';
+                        const className = stObj?.className || (classes.length > 0 ? classes[0].name : '');
                         return (
                           <tr key={sub.id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="p-3 text-slate-400 font-mono">{idx + 1}</td>
@@ -1689,7 +1690,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                               <div className="font-bold text-sm text-slate-900 flex items-center gap-2">
                                 <span>{comp.studentName}</span>
                                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
-                                  Lớp {comp.className || '12A1'}
+                                  Lớp {comp.className || (classes.length > 0 ? classes[0].name : '')}
                                 </span>
                                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                                   Mã đề #{comp.variantCode}
@@ -2042,7 +2043,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       status: 'confirmed',
                       teacherReviewNotes: scoreTeacherNote || 'Điểm do giáo viên điều chỉnh trực tiếp trên bảng điểm.',
                     };
-                    useApp().addSubmission(newSub);
+                    addSubmission(newSub);
                   }
                   setEditingScoreStudent(null);
                 }}
