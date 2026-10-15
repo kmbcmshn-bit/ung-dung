@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ClassRoom, Student } from '../../types';
 import * as XLSX from 'xlsx';
-import { parseVietnameseSchoolExcel, ParseExcelResult, isLikelyVietnameseName } from '../../utils/vietnameseExcelParser';
+import { parseVietnameseSchoolExcel, parseVietnameseSchoolWorkbook, ParseExcelResult, isLikelyVietnameseName } from '../../utils/vietnameseExcelParser';
 import {
   Users,
   PlusCircle,
@@ -134,20 +134,26 @@ export const ClassManagement: React.FC = () => {
         const buffer = evt.target?.result as ArrayBuffer;
         const data = new Uint8Array(buffer);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          defval: '',
-          blankrows: false,
-        });
+        
+        let parsedResult: ParseExcelResult;
+        if (workbook.SheetNames.length > 1) {
+          parsedResult = parseVietnameseSchoolWorkbook(workbook, currentClass.name);
+        } else {
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, {
+            header: 1,
+            defval: '',
+            blankrows: false,
+          });
 
-        if (!rawJson || rawJson.length === 0) {
-          showToast('Tệp không chứa dữ liệu hợp lệ.', 'error');
-          return;
+          if (!rawJson || rawJson.length === 0) {
+            showToast('Tệp không chứa dữ liệu hợp lệ.', 'error');
+            return;
+          }
+
+          parsedResult = parseVietnameseSchoolExcel(rawJson, currentClass.name);
         }
-
-        const parsedResult = parseVietnameseSchoolExcel(rawJson);
 
         if (!parsedResult.success || parsedResult.students.length === 0) {
           showToast(parsedResult.message || 'Không tìm thấy danh sách học sinh hợp lệ trong tệp.', 'error');
@@ -194,18 +200,29 @@ export const ClassManagement: React.FC = () => {
       // Check if line is tab-separated (copied directly from Excel)
       if (line.includes('\t')) {
         const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
-        let foundName = '';
         let foundCode = '';
         let foundDob = '';
+        const nameCandidates: string[] = [];
 
         for (const part of parts) {
-          if (!foundName && isLikelyVietnameseName(part)) {
-            foundName = part;
-          } else if (!foundCode && /^\d{6,14}$/.test(part)) {
+          if (!foundCode && /^\d{6,14}$/.test(part)) {
             foundCode = part;
           } else if (!foundDob && /^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/.test(part)) {
             foundDob = part;
+          } else if (!/^\d+$/.test(part) && !/^(nam|nữ|nu|x|f|m)$/i.test(part) && /[a-zA-ZÀ-ỹ]/.test(part)) {
+            // Text cell with letters
+            if (!/^(stt|mã\s*hs|ngày\s*sinh|lớp|dân\s*tộc|kinh)/i.test(part)) {
+              nameCandidates.push(part);
+            }
           }
+        }
+
+        let foundName = '';
+        if (nameCandidates.length === 1) {
+          foundName = nameCandidates[0];
+        } else if (nameCandidates.length >= 2) {
+          // If first candidate is Họ and second is Tên, combine them!
+          foundName = nameCandidates.join(' ');
         }
 
         if (foundName) {
@@ -220,7 +237,7 @@ export const ClassManagement: React.FC = () => {
 
       // Plain line format: remove leading STT e.g. "1. ", "1/ ", "STT 1: ", "01. "
       const cleanName = line.replace(/^(\d+[\.\/\-\)]\s*|stt\s*[:\s]*\d+[:\s]*)/i, '').trim();
-      if (cleanName.length >= 2 && !/^(stt|họ và tên|danh sách)/i.test(cleanName)) {
+      if (cleanName.length >= 2 && !/^(stt|họ và tên|danh sách|trường|lớp|niên học)/i.test(cleanName)) {
         parsed.push({ name: cleanName });
       }
     });
