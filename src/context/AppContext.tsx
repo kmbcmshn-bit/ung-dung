@@ -60,7 +60,7 @@ export interface AppContextType {
   students: Student[];
   currentStudent: Student | null;
   setCurrentStudentId: (id: string | null) => void;
-  importStudentsToClass: (classId: string, list: Partial<Student>[]) => void;
+  importStudentsToClass: (classId: string, list: Partial<Student>[], replaceExisting?: boolean) => void;
   addStudentToClass: (classId: string, student: Partial<Student>) => void;
   generateAccountsForClass: (classId: string, defaultPassword?: string) => Student[];
   updateStudent: (student: Student) => void;
@@ -393,16 +393,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // --- STUDENT ACTIONS ---
-  const importStudentsToClass = (classId: string, list: Partial<Student>[]) => {
+  const importStudentsToClass = (classId: string, list: Partial<Student>[], replaceExisting: boolean = false) => {
     const targetClass = classes.find(c => c.id === classId);
     const className = targetClass ? targetClass.name : '11A1';
     const schoolName = targetClass?.schoolName || 'THPT Võ Thị Sáu';
     const academicYear = targetClass?.academicYear || '2026 - 2027';
 
-    const usedUsernames = new Set(students.map(s => s.username?.toLowerCase()).filter(Boolean));
+    // If replacing existing, find and clean up old students in this class
+    const oldStudentsInClass = students.filter(s => s.classId === classId);
+    if (replaceExisting && oldStudentsInClass.length > 0) {
+      oldStudentsInClass.forEach(oldSt => {
+        syncDeleteStudent(oldSt.id).catch(console.error);
+      });
+    }
+
+    const otherStudents = replaceExisting
+      ? students.filter(s => s.classId !== classId)
+      : students;
+
+    const usedUsernames = new Set(otherStudents.map(s => s.username?.toLowerCase()).filter(Boolean));
 
     const newStudents: Student[] = list.map((item, index) => {
-      const studentId = `st-${Date.now()}-${index}`;
+      const studentId = `st-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`;
       let name = item.name?.trim() || `Học sinh ${index + 1}`;
       let ten = item.ten?.trim();
       let hoVaChuLot = item.hoVaChuLot?.trim();
@@ -462,8 +474,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     setStudents(prev => {
-      const combined = [...prev, ...newStudents];
-      return combined;
+      const base = replaceExisting ? prev.filter(s => s.classId !== classId) : prev;
+      return [...base, ...newStudents];
     });
     syncBatchSaveStudents(newStudents).catch(console.error);
 
@@ -471,8 +483,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setClasses(prev =>
       prev.map(c => {
         if (c.id === classId) {
-          const count = (students.filter(s => s.classId === classId).length) + newStudents.length;
-          const updatedCls = { ...c, studentCount: count };
+          const finalCount = replaceExisting
+            ? newStudents.length
+            : (students.filter(s => s.classId === classId).length) + newStudents.length;
+          const updatedCls = { ...c, studentCount: finalCount };
           syncSaveClass(updatedCls).catch(console.error);
           return updatedCls;
         }

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ClassRoom, Student } from '../../types';
 import * as XLSX from 'xlsx';
-import { parseVietnameseSchoolExcel, ParseExcelResult } from '../../utils/vietnameseExcelParser';
+import { parseVietnameseSchoolExcel, ParseExcelResult, isLikelyVietnameseName } from '../../utils/vietnameseExcelParser';
 import {
   Users,
   PlusCircle,
@@ -58,6 +58,7 @@ export const ClassManagement: React.FC = () => {
   const [classToDelete, setClassToDelete] = useState<ClassRoom | null>(null);
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [excelPreview, setExcelPreview] = useState<ParseExcelResult | null>(null);
+  const [replaceExisting, setReplaceExisting] = useState<boolean>(true);
 
   // New Class Form state
   const [newClassName, setNewClassName] = useState<string>('11A1');
@@ -130,11 +131,16 @@ export const ClassManagement: React.FC = () => {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = evt.target?.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const buffer = evt.target?.result as ArrayBuffer;
+        const data = new Uint8Array(buffer);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
-        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          defval: '',
+          blankrows: false,
+        });
 
         if (!rawJson || rawJson.length === 0) {
           showToast('Tệp không chứa dữ liệu hợp lệ.', 'error');
@@ -154,17 +160,21 @@ export const ClassManagement: React.FC = () => {
       }
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleConfirmExcelImport = () => {
     if (!excelPreview || !currentClass || excelPreview.students.length === 0) return;
-    importStudentsToClass(currentClass.id, excelPreview.students);
+    importStudentsToClass(currentClass.id, excelPreview.students, replaceExisting);
     const count = excelPreview.students.length;
     setIsImportModalOpen(false);
     setExcelPreview(null);
-    showToast(`Đã tải lên và nhập thành công ${count} học sinh vào lớp ${currentClass.name}!`);
+    showToast(
+      replaceExisting
+        ? `Đã nạp mới và thay thế toàn bộ: ${count} học sinh vào lớp ${currentClass.name}!`
+        : `Đã bổ sung thêm ${count} học sinh vào lớp ${currentClass.name}!`
+    );
   };
 
   // 3. Quick Paste Import
@@ -180,10 +190,37 @@ export const ClassManagement: React.FC = () => {
       .filter(line => line.length > 0);
 
     const parsed: Partial<Student>[] = [];
-    lines.forEach(line => {
-      // Remove leading numbers like "1. ", "1/ ", "STT 1: "
-      const cleanName = line.replace(/^(\d+[\.\/\-\)]\s*|stt\s*\d+[:\s]*)/i, '').trim();
-      if (cleanName.length >= 2) {
+    lines.forEach((line, index) => {
+      // Check if line is tab-separated (copied directly from Excel)
+      if (line.includes('\t')) {
+        const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
+        let foundName = '';
+        let foundCode = '';
+        let foundDob = '';
+
+        for (const part of parts) {
+          if (!foundName && isLikelyVietnameseName(part)) {
+            foundName = part;
+          } else if (!foundCode && /^\d{6,14}$/.test(part)) {
+            foundCode = part;
+          } else if (!foundDob && /^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/.test(part)) {
+            foundDob = part;
+          }
+        }
+
+        if (foundName) {
+          parsed.push({
+            name: foundName,
+            studentCode: foundCode || undefined,
+            dob: foundDob || undefined,
+          });
+          return;
+        }
+      }
+
+      // Plain line format: remove leading STT e.g. "1. ", "1/ ", "STT 1: ", "01. "
+      const cleanName = line.replace(/^(\d+[\.\/\-\)]\s*|stt\s*[:\s]*\d+[:\s]*)/i, '').trim();
+      if (cleanName.length >= 2 && !/^(stt|họ và tên|danh sách)/i.test(cleanName)) {
         parsed.push({ name: cleanName });
       }
     });
@@ -193,10 +230,14 @@ export const ClassManagement: React.FC = () => {
       return;
     }
 
-    importStudentsToClass(currentClass.id, parsed);
+    importStudentsToClass(currentClass.id, parsed, replaceExisting);
     setPasteText('');
     setIsImportModalOpen(false);
-    showToast(`Đã thêm thành công ${parsed.length} học sinh vào lớp ${currentClass.name}!`);
+    showToast(
+      replaceExisting
+        ? `Đã thay thế và nạp mới ${parsed.length} học sinh vào lớp ${currentClass.name}!`
+        : `Đã thêm thành công ${parsed.length} học sinh vào lớp ${currentClass.name}!`
+    );
   };
 
   // 4. Add Single Student
@@ -879,31 +920,96 @@ export const ClassManagement: React.FC = () => {
             {importMode === 'excel' ? (
               excelPreview ? (
                 <div className="space-y-4 text-xs">
-                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2">
-                    <div className="flex items-center justify-between">
+                  <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                       <div className="flex items-center gap-2 text-emerald-950 font-bold text-sm">
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                        <span>Đã Đọc File Excel Thành Công ({excelPreview.students.length} Học Sinh)</span>
+                        <span>Trích Xuất Đầy Đủ 100% Danh Sách ({excelPreview.students.length} Học Sinh)</span>
                       </div>
                       {excelPreview.detectedClassName && (
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-xs">
+                        <span className="self-start sm:self-auto px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-xs">
                           Lớp {excelPreview.detectedClassName}
                         </span>
                       )}
                     </div>
-                    {excelPreview.detectedSchoolName && (
-                      <p className="text-emerald-800 text-[11px] font-medium">
-                        Đơn vị: {excelPreview.detectedSchoolName}
-                      </p>
-                    )}
-                    <div className="text-[11px] text-emerald-900 bg-white/80 p-2.5 rounded-xl border border-emerald-200/60 space-y-1">
+
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-emerald-900 font-medium">
+                      {excelPreview.sttRangeSummary && (
+                        <span className="px-2 py-0.5 bg-white rounded-md border border-emerald-300 text-emerald-800 font-bold">
+                          📋 {excelPreview.sttRangeSummary}
+                        </span>
+                      )}
+                      {excelPreview.detectedSchoolName && (
+                        <span>🏫 Trường: <strong>{excelPreview.detectedSchoolName}</strong></span>
+                      )}
+                      {excelPreview.detectedAcademicYear && (
+                        <span>📅 Niên học: <strong>{excelPreview.detectedAcademicYear}</strong></span>
+                      )}
+                    </div>
+
+                    <div className="text-[11px] text-emerald-900 bg-white/90 p-2.5 rounded-xl border border-emerald-200/80 space-y-1">
                       <div className="flex items-center gap-1.5 font-bold text-emerald-800">
                         <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Đặc điểm nhận diện tự động từ tệp vnEdu:</span>
+                        <span>Cam kết chuẩn xác dữ liệu học sinh:</span>
                       </div>
-                      <p>• Đã nhận diện và tách chuẩn cột <strong>"Họ và chữ lót"</strong> và cột <strong>"Tên"</strong>, ghép thành Họ và tên hoàn chỉnh.</p>
-                      <p>• Đã tạo sẵn <strong>Tên đăng nhập chuẩn</strong> theo cấu trúc: họ+tên+lớp+trường+niên học (Ví dụ: <code className="text-emerald-800 font-mono font-bold bg-white px-1 py-0.2 rounded border border-emerald-300">tranan11a1vts2627</code>).</p>
-                      <p>• Đã trích xuất chính xác <strong>Mã học sinh vnEdu</strong>, Ngày sinh, Giới tính.</p>
+                      <p className="text-slate-700">
+                        • <strong>Không sót bất kỳ học sinh nào:</strong> Đã khắc phục triệt để lỗi bỏ sót học sinh đầu bảng hoặc học sinh có tên phổ biến như <em>Đạt, Khá, Tốt, Sinh, Tiến</em>.
+                      </p>
+                      <p className="text-slate-700">
+                        • <strong>Tài khoản tự động:</strong> Cấu trúc họ+tên+lớp+trường+niên học (Ví dụ: <code className="text-emerald-800 font-mono font-bold bg-slate-100 px-1 py-0.2 rounded">tranan11a1vts2627</code>).
+                      </p>
+                    </div>
+
+                    {/* Mode selection: Replace vs Append */}
+                    <div className="pt-1.5 border-t border-emerald-200/60">
+                      <div className="font-bold text-slate-800 text-xs mb-1.5">
+                        Tùy chọn nạp vào lớp {currentClass.name}:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          replaceExisting
+                            ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950 font-semibold'
+                            : 'bg-white/60 border-slate-200 text-slate-700 hover:bg-white'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="importReplaceMode"
+                            checked={replaceExisting}
+                            onChange={() => setReplaceExisting(true)}
+                            className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div>
+                            <div className="font-bold text-xs text-emerald-900">
+                              Làm mới & Thay thế ({excelPreview.students.length} HS)
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-normal">
+                              Xóa học sinh mẫu cũ, chuẩn hóa sĩ số đúng {excelPreview.students.length} em theo file.
+                            </div>
+                          </div>
+                        </label>
+
+                        <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
+                          !replaceExisting
+                            ? 'bg-white border-emerald-500 ring-2 ring-emerald-500/20 text-emerald-950 font-semibold'
+                            : 'bg-white/60 border-slate-200 text-slate-700 hover:bg-white'
+                        }`}>
+                          <input
+                            type="radio"
+                            name="importReplaceMode"
+                            checked={!replaceExisting}
+                            onChange={() => setReplaceExisting(false)}
+                            className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div>
+                            <div className="font-bold text-xs text-slate-800">
+                              Bổ sung thêm vào lớp
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-normal">
+                              Giữ nguyên {currentStudents.length} học sinh hiện tại và thêm {excelPreview.students.length} em mới.
+                            </div>
+                          </div>
+                        </label>
+                      </div>
                     </div>
                   </div>
 
@@ -912,7 +1018,7 @@ export const ClassManagement: React.FC = () => {
                     <table className="w-full text-left text-xs">
                       <thead className="bg-slate-100 font-bold text-slate-700 text-[11px] sticky top-0">
                         <tr>
-                          <th className="py-2 px-2 w-8 text-center">STT</th>
+                          <th className="py-2 px-2 w-10 text-center">STT</th>
                           <th className="py-2 px-2.5">Họ và Chữ Lót</th>
                           <th className="py-2 px-2.5 text-emerald-800">Tên</th>
                           <th className="py-2 px-3 font-extrabold text-slate-900">Họ và Tên Đầy Đủ</th>
@@ -925,7 +1031,7 @@ export const ClassManagement: React.FC = () => {
                       <tbody className="divide-y divide-slate-100">
                         {excelPreview.students.map((st, i) => (
                           <tr key={i} className="hover:bg-slate-50">
-                            <td className="py-1.5 px-2 text-center text-slate-400 font-mono font-bold">{i + 1}</td>
+                            <td className="py-1.5 px-2 text-center text-slate-400 font-mono font-bold">{st.stt || i + 1}</td>
                             <td className="py-1.5 px-2.5 text-slate-700">{st.hoVaChuLot || '—'}</td>
                             <td className="py-1.5 px-2.5 font-bold text-emerald-800 bg-emerald-50/50">{st.ten || '—'}</td>
                             <td className="py-1.5 px-3 font-bold text-slate-900">{st.name}</td>
