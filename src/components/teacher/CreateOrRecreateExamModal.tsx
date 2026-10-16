@@ -86,6 +86,7 @@ export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps>
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [successResult, setSuccessResult] = useState<string | null>(null);
+  const [errorResult, setErrorResult] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -186,18 +187,26 @@ Phần III: 1 câu tự luận:
     setIsLoading(true);
     setStatusMessage('Gemini AI đang phân tích yêu cầu và biên soạn câu hỏi...');
     setSuccessResult(null);
+    setErrorResult(null);
 
-    const res = await generateExamFromCustomPrompt(customPrompt, {
-      subject,
-      gradeColumn,
-      durationMinutes,
-      totalPoints: 10.0,
-      targetClassId,
-    });
+    try {
+      const res = await generateExamFromCustomPrompt(customPrompt, {
+        subject,
+        gradeColumn,
+        durationMinutes,
+        totalPoints: 10.0,
+        targetClassId,
+      });
 
-    setIsLoading(false);
-    if (res.success) {
-      setSuccessResult(res.message);
+      setIsLoading(false);
+      if (res && res.success) {
+        setSuccessResult(res.message);
+      } else {
+        setErrorResult(res?.message || 'Có lỗi xảy ra khi tạo đề thi.');
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorResult(err?.message || 'Lỗi kết nối khi tạo đề thi.');
     }
   };
 
@@ -207,25 +216,33 @@ Phần III: 1 câu tự luận:
     setIsLoading(true);
     setStatusMessage(`Gemini AI đang nạp 100% nội dung ma trận "${uploadedFile.name}" và biên soạn câu hỏi...`);
     setSuccessResult(null);
+    setErrorResult(null);
 
-    const res = await parseMatrixFromFile(
-      uploadedFile.base64,
-      uploadedFile.type,
-      uploadedFile.name,
-      uploadedFile.extractedText,
-      uploadedFile.parsedStructure?.matrixSummary || fileInstructions,
-      {
-        targetClassId,
-        subject,
-        gradeColumn,
-        durationMinutes,
-        totalPoints: 10.0,
+    try {
+      const res = await parseMatrixFromFile(
+        uploadedFile.base64,
+        uploadedFile.type,
+        uploadedFile.name,
+        uploadedFile.extractedText,
+        uploadedFile.parsedStructure?.matrixSummary || fileInstructions,
+        {
+          targetClassId,
+          subject,
+          gradeColumn,
+          durationMinutes,
+          totalPoints: 10.0,
+        }
+      );
+
+      setIsLoading(false);
+      if (res && res.success) {
+        setSuccessResult(res.message);
+      } else {
+        setErrorResult(res?.message || 'Có lỗi xảy ra khi bóc tách ma trận.');
       }
-    );
-
-    setIsLoading(false);
-    if (res.success) {
-      setSuccessResult(res.message);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorResult(err?.message || 'Lỗi kết nối khi bóc tách ma trận.');
     }
   };
 
@@ -234,18 +251,26 @@ Phần III: 1 câu tự luận:
     setIsLoading(true);
     setStatusMessage('Gemini AI đang phân tích đề gốc và tái tạo số liệu bài toán...');
     setSuccessResult(null);
+    setErrorResult(null);
 
-    const res = await recreateExistingExam(recreateInstruction, {
-      targetClassId,
-      subject,
-      gradeColumn,
-      durationMinutes,
-      totalPoints: 10.0,
-    });
+    try {
+      const res = await recreateExistingExam(recreateInstruction, {
+        targetClassId,
+        subject,
+        gradeColumn,
+        durationMinutes,
+        totalPoints: 10.0,
+      });
 
-    setIsLoading(false);
-    if (res.success) {
-      setSuccessResult(res.message);
+      setIsLoading(false);
+      if (res && res.success) {
+        setSuccessResult(res.message);
+      } else {
+        setErrorResult(res?.message || 'Có lỗi xảy ra khi tái tạo đề thi.');
+      }
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorResult(err?.message || 'Lỗi kết nối khi tái tạo đề thi.');
     }
   };
 
@@ -686,6 +711,17 @@ Phần III: 1 câu tự luận:
                 <div className="p-4 bg-emerald-50/80 rounded-xl border border-emerald-200 flex items-center gap-3 text-xs text-emerald-900 animate-pulse">
                   <RefreshCw className="w-4 h-4 animate-spin text-emerald-600 shrink-0" />
                   <span className="font-semibold">{statusMessage}</span>
+                </div>
+              )}
+
+              {/* Error indicator */}
+              {errorResult && (
+                <div className="p-4 bg-red-50 rounded-xl border border-red-200 flex items-start gap-3 text-xs text-red-900 animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="font-bold">Không thể tạo đề thi</div>
+                    <p className="text-[11px] text-red-700">{errorResult}</p>
+                  </div>
                 </div>
               )}
             </div>

@@ -177,6 +177,24 @@ export async function syncBatchSaveStudents(studentList: Student[]) {
   }
 }
 
+export async function syncBatchReplaceStudents(oldStudentIds: string[], newStudents: Student[]) {
+  const path = 'students';
+  try {
+    const batch = writeBatch(db);
+    oldStudentIds.forEach((id) => {
+      const ref = doc(db, 'students', id);
+      batch.delete(ref);
+    });
+    newStudents.forEach((st) => {
+      const ref = doc(db, 'students', st.id);
+      batch.set(ref, sanitizeData(st), { merge: true });
+    });
+    await batch.commit();
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, path);
+  }
+}
+
 export async function syncDeleteStudent(studentId: string) {
   const path = `students/${studentId}`;
   try {

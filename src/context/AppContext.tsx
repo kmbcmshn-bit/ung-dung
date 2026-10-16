@@ -30,6 +30,7 @@ import {
   subscribeStudents,
   syncSaveStudent,
   syncBatchSaveStudents,
+  syncBatchReplaceStudents,
   syncDeleteStudent,
   subscribeExams,
   syncSaveExam,
@@ -291,27 +292,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Students subscription
+    // 2. Students subscription (Never drop local imported students during batch write lag)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
-        setStudents(remoteStudents);
+        setStudents(prev => {
+          if (remoteStudents.length >= prev.length) {
+            return remoteStudents;
+          }
+          const remoteMap = new Map(remoteStudents.map(s => [s.id, s]));
+          const merged = [...remoteStudents];
+          for (const localSt of prev) {
+            if (!remoteMap.has(localSt.id)) {
+              merged.push(localSt);
+            }
+          }
+          return merged;
+        });
       } else {
         const filtered = INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
         syncBatchSaveStudents(filtered).catch(console.error);
       }
     });
 
-    // 3. Exams subscription (Sync exams created by teacher, exclude default mock)
+    // 3. Exams subscription (Sync exams created by teacher, NEVER erase newly created local exam)
     const unsubExams = subscribeExams((remoteExams) => {
-      const filtered = (remoteExams || []).filter(
+      if (!remoteExams) return;
+      const filtered = remoteExams.filter(
         e => e && e.id !== 'exam-1' && !e.title?.includes('Kiểm tra ĐTX1 - Khảo sát')
       );
-      setExams(filtered);
-      setExam(prev => {
-        if (!prev) return filtered.length > 0 ? filtered[0] : null;
-        const exists = filtered.find(e => e.id === prev.id);
-        return exists || (filtered.length > 0 ? filtered[0] : null);
-      });
+      if (filtered.length > 0) {
+        setExams(filtered);
+        setExam(prev => {
+          if (!prev) return filtered[0];
+          const exists = filtered.find(e => e.id === prev.id);
+          return exists || prev || filtered[0];
+        });
+      }
     });
 
     // 4. Submissions subscription
@@ -399,13 +415,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const schoolName = targetClass?.schoolName || 'THPT Võ Thị Sáu';
     const academicYear = targetClass?.academicYear || '2026 - 2027';
 
-    // If replacing existing, find and clean up old students in this class
+    // If replacing existing, prepare old students for atomic batch replacement
     const oldStudentsInClass = students.filter(s => s.classId === classId);
-    if (replaceExisting && oldStudentsInClass.length > 0) {
-      oldStudentsInClass.forEach(oldSt => {
-        syncDeleteStudent(oldSt.id).catch(console.error);
-      });
-    }
 
     const otherStudents = replaceExisting
       ? students.filter(s => s.classId !== classId)
@@ -477,7 +488,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const base = replaceExisting ? prev.filter(s => s.classId !== classId) : prev;
       return [...base, ...newStudents];
     });
-    syncBatchSaveStudents(newStudents).catch(console.error);
+
+    if (replaceExisting && oldStudentsInClass.length > 0) {
+      syncBatchReplaceStudents(oldStudentsInClass.map(s => s.id), newStudents).catch(console.error);
+    } else {
+      syncBatchSaveStudents(newStudents).catch(console.error);
+    }
 
     // Update class student count
     setClasses(prev =>
@@ -1066,14 +1082,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           newAssigned[st.id] = assignedCode;
         });
 
-        setExam(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            variants: newVariants,
-            assignedCodes: newAssigned,
-          };
-        });
+        const updatedExam: Exam = {
+          ...exam,
+          variants: newVariants,
+          assignedCodes: newAssigned,
+        };
+        setExam(updatedExam);
+        setExams(prev => prev.map(e => e.id === updatedExam.id ? updatedExam : e));
+        syncSaveExam(updatedExam).catch(console.error);
 
         return {
           success: true,
@@ -1125,14 +1141,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       newAssigned[st.id] = codes[idx % codes.length];
     });
 
-    setExam(prev => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        variants: fallbackVariants,
-        assignedCodes: newAssigned,
-      };
-    });
+    const fallbackUpdatedExam: Exam = {
+      ...exam,
+      variants: fallbackVariants,
+      assignedCodes: newAssigned,
+    };
+    setExam(fallbackUpdatedExam);
+    setExams(prev => prev.map(e => e.id === fallbackUpdatedExam.id ? fallbackUpdatedExam : e));
+    syncSaveExam(fallbackUpdatedExam).catch(console.error);
 
     return {
       success: true,
