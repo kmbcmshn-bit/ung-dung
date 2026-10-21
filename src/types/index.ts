@@ -25,9 +25,13 @@ export interface ClassRoom {
 
 export interface Student {
   id: string;
+  stt?: number; // Số thứ tự theo danh sách chuẩn (1, 2, 3... N)
   name: string;
+  fullName?: string; // Họ và tên đầy đủ
   hoVaChuLot?: string; // Họ và chữ lót (ví dụ: "Trần Thái")
   ten?: string; // Tên (ví dụ: "An")
+  lastName?: string; // Họ và chữ lót chuẩn: lấy từ trái qua ngoại trừ từ cuối cùng
+  firstName?: string; // Tên chuẩn: từ cuối cùng
   studentCode?: string; // Mã học sinh (e.g. from vnEdu 2511404881)
   email: string;
   username?: string;

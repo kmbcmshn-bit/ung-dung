@@ -3,8 +3,11 @@ import * as XLSX from 'xlsx';
 export interface ParsedStudentRow {
   stt?: number;
   name: string; // Họ và tên đầy đủ: "Nguyễn Tiến Đạt"
+  fullName?: string; // Họ và tên đầy đủ
   hoVaChuLot?: string; // Họ và chữ lót riêng: "Nguyễn Tiến"
   ten?: string; // Tên riêng: "Đạt"
+  lastName?: string; // Họ và chữ lót chuẩn Việt Nam: lấy từ trái qua ngoại trừ từ cuối cùng
+  firstName?: string; // Tên chuẩn Việt Nam: từ cuối cùng
   studentCode?: string; // Mã học sinh vnEdu / SMAS (ví dụ: 2511404881)
   gender?: 'Nam' | 'Nữ' | 'Khác';
   dob?: string;
@@ -282,27 +285,81 @@ export function isAssessmentOrScoreHeader(val: string): boolean {
 }
 
 /**
+ * Splits a full name string into Vietnamese standard:
+ * - hoVaChuLot / lastName: all words from the left except the last word (Họ và chữ lót)
+ * - ten / firstName: the last word (Tên chính)
+ * - fullName: standardized full name
+ * E.g. "Nguyễn Bảo An" -> lastName: "Nguyễn Bảo", firstName: "An", fullName: "Nguyễn Bảo An"
+ * E.g. "Trần Tiến Đạt" -> lastName: "Trần Tiến", firstName: "Đạt", fullName: "Trần Tiến Đạt"
+ * E.g. "Lê Thị Mai" -> lastName: "Lê Thị", firstName: "Mai", fullName: "Lê Thị Mai"
+ * E.g. "An" -> lastName: "", firstName: "An", fullName: "An"
+ */
+export function splitVietnameseName(fullName: string): {
+  hoVaChuLot: string;
+  ten: string;
+  lastName: string;
+  firstName: string;
+  fullName: string;
+} {
+  const clean = cleanTextCell(fullName)
+    .replace(/^(\d+[\.\/\-\)]\s*|stt\s*[:\s]*\d+[:\s]*)/i, '')
+    .replace(/[\*\#\?\+]+$/g, '')
+    .replace(/\s*\([^)]*\)$/g, '')
+    .normalize('NFC')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return { hoVaChuLot: '', ten: '', lastName: '', firstName: '', fullName: '' };
+  }
+  if (words.length === 1) {
+    return {
+      hoVaChuLot: '',
+      ten: words[0],
+      lastName: '',
+      firstName: words[0],
+      fullName: words[0],
+    };
+  }
+  const ten = words[words.length - 1];
+  const hoVaChuLot = words.slice(0, -1).join(' ');
+  return {
+    hoVaChuLot,
+    ten,
+    lastName: hoVaChuLot,
+    firstName: ten,
+    fullName: `${hoVaChuLot} ${ten}`,
+  };
+}
+
+/**
  * Academic ratings, ranking categories and evaluations:
- * Tốt, Khá, Đạt, Chưa đạt, Giỏi, Trung bình, Yếu, Kém, Xuất sắc, etc.
+ * Explicit compound ratings and rating headers.
+ * Notice: Single words like "Đạt", "Khá" are legitimate human given names in Vietnam
+ * and are ONLY considered ratings when in compound form or in rating table headers.
  */
 export const RATING_WORDS = new Set([
-  'tốt', 'khá', 'đạt', 'chưa đạt', 'chua dat', 'c.đạt', 'cđ',
-  'giỏi', 'gioi', 'trung bình', 'tb', 'yếu', 'yeu', 'kém', 'kem',
+  'chưa đạt', 'chua dat', 'c.đạt', 'cđ',
+  'trung bình', 'tb', 'yếu', 'yeu', 'kém', 'kem',
   'xuất sắc', 'xuat sac',
-  'hoàn thành tốt', 'hoàn thành', 'chưa hoàn thành', 'htt', 'ht', 'cht'
+  'hoàn thành tốt', 'chưa hoàn thành', 'htt', 'cht',
+  'tốt khá đạt chưa đạt', 'tốt khá đạt', 'giỏi khá trung bình yếu kém'
 ]);
 
 export function isAcademicRatingOrEvaluation(val: string): boolean {
   if (!val) return false;
   const clean = val.trim().toLowerCase();
   if (RATING_WORDS.has(clean)) return true;
-  if (/^(tốt|khá|đạt|chưa\s*đạt|c\.?\s*đạt|cđ|giỏi|trung\s*bình|tb|yếu|kém|xuất\s*sắc|hoàn\s*thành\s*tốt|hoàn\s*thành|chưa\s*hoàn\s*thành|htt|ht|cht)$/i.test(clean)) return true;
+  // Explicit compound ratings
+  if (/^(chưa\s*đạt|c\.?\s*đạt|cđ|xuất\s*sắc|hoàn\s*thành\s*tốt|chưa\s*hoàn\s*thành|trung\s*bình|htt|cht)$/i.test(clean)) return true;
+  // Multiple ratings concatenated (e.g. "Tốt Khá", "Khá Đạt", "Đạt Chưa đạt", "Tốt Khá Đạt Chưa đạt")
   const words = clean.split(/\s+/).filter(Boolean);
   if (words.length >= 2 && words.every(w => /^(tốt|khá|đạt|chưa|cđ|giỏi|tb|yếu|kém|xuất|sắc|hoàn|thành)$/i.test(w))) {
     return true;
   }
   if (/^(xếp\s*loại|học\s*lực|hạnh\s*kiểm|rèn\s*luyện|mức\s*đạt(\s*được)?|kết\s*quả(\s*học\s*tập)?|đánh\s*giá)$/i.test(clean)) return true;
-  if (/^(xếp\s*loại|học\s*lực|hạnh\s*kiểm|rèn\s*luyện|kết\s*quả)\s*[:\-]?/i.test(clean)) return true;
+  if (/^(xếp\s*loại|học\s*lực|hạnh\s*kiểm|rèn\s*luyện|kết\s*quả)\s*[:\-]?\s*(tốt|khá|đạt|chưa\s*đạt|giỏi|trung\s*bình|tb|yếu|kém)/i.test(clean)) return true;
   return false;
 }
 
@@ -428,9 +485,9 @@ export function isLikelyVietnameseName(str: string): boolean {
 
 /**
  * Checks if a cell value is likely a student's given name (Tên) in a Vietnamese roster.
- * Highly robust: accepts "Nam", "Nữ", "Ý", "Ngân", "An" while strictly rejecting:
+ * Highly robust: accepts "Nam", "Nữ", "Ý", "Ngân", "An", "Đạt", "Khá", "Bình" while strictly rejecting:
  * - Assessment/Score headers (TX1, TX2, GK, CK, ĐTB...)
- * - Academic ratings (Tốt, Khá, Đạt, Chưa đạt, Giỏi, TB...)
+ * - Explicit compound ratings (Chưa đạt, C.Đạt, CĐ, Xuất sắc, Trung bình...)
  * - Pure numbers, decimals, dates, checkmarks (x, v, f), ethnicities, and explicit table header tags.
  */
 export function isLikelyGivenName(val: string): boolean {
@@ -444,21 +501,19 @@ export function isLikelyGivenName(val: string): boolean {
   if (/^[xvf\-\+\*10]$/i.test(clean)) return false;
 
   const lower = clean.toLowerCase();
-  if (VIETNAMESE_ETHNICITIES.has(lower)) return false;
 
   // Rejects score/assessment headers (TX1, GK, CK, ĐTB...)
   if (isAssessmentOrScoreHeader(lower)) return false;
 
-  // Rejects academic ratings (Tốt, Khá, Đạt, Chưa đạt, Giỏi, TB...)
-  if (isAcademicRatingOrEvaluation(lower)) return false;
-
-  // Rejects statistics & counts
-  if (isStatisticsOrCountSummary(lower)) return false;
-
-  if (/^(ngày\s*sinh|nữ|nam\/nữ|dân\s*tộc|ghi\s*chú|lớp|định\s*danh|mã\s*hs|stt|xếp\s*loại|học\s*lực|hạnh\s*kiểm|rèn\s*luyện|mức\s*đạt|kết\s*quả|học\s*sinh|điểm)$/i.test(lower)) {
+  // Rejects explicit compound ratings & administrative terms
+  if (/^(chưa\s*đạt|c\.?\s*đạt|cđ|xuất\s*sắc|hoàn\s*thành\s*tốt|chưa\s*hoàn\s*thành|trung\s*bình|htt|cht)$/i.test(lower)) {
+    return false;
+  }
+  if (/^(ngày\s*sinh|nam\/nữ|dân\s*tộc|ghi\s*chú|lớp|định\s*danh|mã\s*hs|stt|xếp\s*loại|học\s*lực|hạnh\s*kiểm|rèn\s*luyện|mức\s*đạt|kết\s*quả|học\s*sinh|điểm)$/i.test(lower)) {
     return false;
   }
 
+  // Accepts standard Vietnamese names: An, Bình, Cường, Dũng, Đạt, Giang, Hân, Khá, Nam, Nữ, Ngân, Ý, Thái, Hoa, etc.
   return true;
 }
 
@@ -474,48 +529,52 @@ function isHeaderOrBannerRow(row: any[]): boolean {
 
   const rowTextAll = nonEmpties.map(c => c.toLowerCase()).join(' ');
 
-  // 1. Explicit statistical, evaluation, or footer summaries
-  // (e.g. "Xếp loại: Tốt", "Học lực", "Tổng số học sinh", "Tỷ lệ: 34%", "15 học sinh")
-  if (
-    rowTextAll.includes('xếp loại') ||
-    rowTextAll.includes('học lực') ||
-    rowTextAll.includes('hạnh kiểm') ||
-    rowTextAll.includes('rèn luyện') ||
-    rowTextAll.includes('mức đạt') ||
-    rowTextAll.includes('thống kê') ||
-    rowTextAll.includes('người lập') ||
-    rowTextAll.includes('giáo viên') ||
-    rowTextAll.includes('hiệu trưởng') ||
-    rowTextAll.includes('ban giám hiệu') ||
-    rowTextAll.includes('tổng số') ||
-    rowTextAll.includes('tổng cộng') ||
-    rowTextAll.includes('tỷ lệ') ||
-    rowTextAll.includes('tỉ lệ') ||
-    /\d+\s*học\s*sinh/i.test(rowTextAll) ||
-    /trang\s+\d+/i.test(rowTextAll) ||
-    (rowTextAll.includes('ngày') && rowTextAll.includes('tháng') && rowTextAll.includes('năm') && nonEmpties.length <= 4)
-  ) {
+  // 1. Explicit table headers: has STT label AND (Name label OR Student Code label)
+  const hasSttLabel = nonEmpties.some(c => /^(stt|số\s*tt|số\s*thứ\s*tự|no\.?)$/i.test(c));
+  const hasNameLabel = nonEmpties.some(c => /(họ\s*(và|&)?\s*tên|họ\s*(và|&)?\s*(chữ\s*)?lót|tên\s*học\s*sinh|^tên$)/i.test(c));
+  const hasCodeLabel = nonEmpties.some(c => /(mã\s*(hs|học\s*sinh|định\s*danh)|mshs|sbd)/i.test(c));
+  if (hasSttLabel && (hasNameLabel || hasCodeLabel)) {
     return true;
   }
 
-  // 2. Row containing assessment headers (e.g. TX1, TX2, TX3, GK, CK, ĐTB)
-  const assessmentCount = nonEmpties.filter(c => isAssessmentOrScoreHeader(c)).length;
-  if (assessmentCount >= 2 || (assessmentCount >= 1 && nonEmpties.length <= 5)) {
-    return true;
-  }
-
-  // 3. Row containing academic ratings (e.g. Tốt, Khá, Đạt, Chưa đạt, Giỏi, TB...)
-  const ratingCount = nonEmpties.filter(c => isAcademicRatingOrEvaluation(c)).length;
-  if (ratingCount >= 2 || (ratingCount >= 1 && nonEmpties.length <= 5)) {
-    return true;
-  }
-
-  // 4. Sub-header row for name columns:
+  // 2. Sub-header row for name columns:
   // e.g. ['', '', 'Họ và chữ lót', 'Tên', '', '', ''] or ['Họ và đệm', 'Tên']
   const hasHoLabel = nonEmpties.some(c => /^(họ\s*(và|&)?\s*(chữ\s*)?lót|họ\s*(và|&)?\s*(tên\s*)?đệm|họ\s*đệm|họ\s*lót|^họ)$/i.test(c));
   const hasTenLabel = nonEmpties.some(c => /^(tên|tên\s*gọi|tên\s*hs|tên\s*học\s*sinh)$/i.test(c));
   if (hasHoLabel && hasTenLabel) {
     return true;
+  }
+
+  // 3. Footer summary / statistics signatures:
+  if (
+    rowTextAll.startsWith('thống kê') ||
+    rowTextAll.startsWith('người lập') ||
+    rowTextAll.startsWith('giáo viên') ||
+    rowTextAll.startsWith('hiệu trưởng') ||
+    rowTextAll.startsWith('ban giám hiệu') ||
+    rowTextAll.startsWith('tổng số') ||
+    rowTextAll.startsWith('tổng cộng') ||
+    rowTextAll.startsWith('xếp loại:') ||
+    rowTextAll.startsWith('trang ') ||
+    /trang\s+\d+\s*\/\s*\d+/i.test(rowTextAll) ||
+    (rowTextAll.includes('ngày') && rowTextAll.includes('tháng') && rowTextAll.includes('năm') && nonEmpties.length <= 4)
+  ) {
+    return true;
+  }
+
+  // 4. CRITICAL ANCHOR RULE FOR STUDENT ROWS:
+  // If the row starts with a valid numeric STT (1 to 10000) in cell 0, 1, 2, or 3,
+  // OR contains a 6-14 digit student code,
+  // IT IS 100% A STUDENT DATA ROW, NEVER A HEADER OR BANNER!
+  const hasSttNumber = nonEmpties.slice(0, 4).some(c => {
+    const match = c.match(/^\s*(\d{1,5})\s*[\.\:\-\)\/]?$/);
+    if (!match) return false;
+    const num = parseInt(match[1], 10);
+    return num > 0 && num < 10000;
+  });
+  const hasCode = nonEmpties.slice(0, 4).some(c => /^\d{6,14}$/.test(c) || /^HS\d{4,10}$/i.test(c));
+  if (hasSttNumber || hasCode) {
+    return false; // Student row!
   }
 
   // 5. School/Class title banner (spanning 1 to 4 cells)
@@ -526,16 +585,19 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     return true;
   }
 
-  // 6. Repeated table header (e.g. STT | Mã học sinh | Họ và chữ lót | Tên)
-  const hasSttLabel = nonEmpties.some(c => /^(stt|số\s*tt|số\s*thứ\s*tự|no\.?)$/i.test(c));
-  const hasNameLabel = nonEmpties.some(c => /(họ\s*(và|&)?\s*tên|họ\s*(và|&)?\s*(chữ\s*)?lót|tên\s*học\s*sinh|^tên$)/i.test(c));
-  const hasCodeLabel = nonEmpties.some(c => /(mã\s*(hs|học\s*sinh|định\s*danh)|mshs|sbd)/i.test(c));
-
-  if (hasSttLabel && (hasNameLabel || hasCodeLabel)) {
+  // 6. Sub-header containing score column headers (e.g. TX1, TX2, TX3, GK, CK, ĐTB)
+  const assessmentCount = nonEmpties.filter(c => isAssessmentOrScoreHeader(c)).length;
+  if (assessmentCount >= 2) {
     return true;
   }
 
-  // 7. Column numbering row e.g. (1), (2), (3), (4)...
+  // 7. Row containing academic ratings legend (e.g. Tốt, Khá, Đạt, Chưa đạt)
+  const ratingCount = nonEmpties.filter(c => isAcademicRatingOrEvaluation(c)).length;
+  if (ratingCount >= 2) {
+    return true;
+  }
+
+  // 8. Column numbering row e.g. (1), (2), (3), (4)...
   let parensNumberingCount = 0;
   for (const c of nonEmpties) {
     if (/^\(\d+\)$/.test(c) || (c.length <= 2 && /^\d+$/.test(c))) {
@@ -546,7 +608,7 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     return true;
   }
 
-  // 8. If ALL non-empty cells in the row are assessment headers, ratings, numbers, or percentages
+  // 9. If ALL non-empty cells in the row are assessment headers, ratings, numbers, or percentages
   const allAreHeadersOrRatings = nonEmpties.every(c =>
     isAssessmentOrScoreHeader(c) ||
     isAcademicRatingOrEvaluation(c) ||
@@ -573,6 +635,7 @@ function inspectHeaderRow(row: any[]): {
   dobCol: number;
   genderCol: number;
   genderFemaleCol: number;
+  danTocCol: number;
   phoneCol: number;
   emailCol: number;
 } {
@@ -584,6 +647,7 @@ function inspectHeaderRow(row: any[]): {
   let dobCol = -1;
   let genderCol = -1;
   let genderFemaleCol = -1;
+  let danTocCol = -1;
   let phoneCol = -1;
   let emailCol = -1;
 
@@ -607,6 +671,8 @@ function inspectHeaderRow(row: any[]): {
       genderFemaleCol = col;
     } else if (/(giới\s*tính|^phái$|nam\/nữ|^gt$)/i.test(clean) && genderCol === -1) {
       genderCol = col;
+    } else if (/(dân\s*tộc|^dt$)/i.test(clean) && danTocCol === -1) {
+      danTocCol = col;
     } else if (/(số\s*điện\s*thoại|điện\s*thoại|sđt|sdt|di\s*động|liên\s*hệ|phone)/i.test(clean) && phoneCol === -1) {
       phoneCol = col;
     } else if (/(email|thư\s*điện\s*tử|tài\s*khoản)/i.test(clean) && emailCol === -1) {
@@ -623,6 +689,7 @@ function inspectHeaderRow(row: any[]): {
     dobCol,
     genderCol,
     genderFemaleCol,
+    danTocCol,
     phoneCol,
     emailCol,
   };
@@ -796,24 +863,30 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
       continue;
     }
 
-    // 2. Extract STT (Check primary STT col, or first 2 columns)
+    // 2. Extract STT (Check primary STT col, or first 4 columns)
     let rowStt: number | undefined;
     if (currentHeaderCols.sttCol !== -1 && row[currentHeaderCols.sttCol] !== undefined) {
       const sVal = cleanTextCell(row[currentHeaderCols.sttCol]);
-      const num = parseInt(sVal, 10);
-      if (!isNaN(num) && num > 0 && num < 250) {
-        rowStt = num;
+      const match = sVal.match(/^\s*(\d{1,5})\s*[\.\:\-\)\/]?$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > 0 && num < 10000) {
+          rowStt = num;
+        }
       }
     }
 
     if (!rowStt) {
-      // Search first 2 cells for a single integer
-      for (let c = 0; c < Math.min(2, row.length); c++) {
+      // Search first 4 cells for a single integer / STT format
+      for (let c = 0; c < Math.min(4, row.length); c++) {
         const val = cleanTextCell(row[c]);
-        const num = parseInt(val, 10);
-        if (!isNaN(num) && num > 0 && num < 250 && /^\d{1,3}$/.test(val)) {
-          rowStt = num;
-          break;
+        const match = val.match(/^\s*(\d{1,5})\s*[\.\:\-\)\/]?$/);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > 0 && num < 10000) {
+            rowStt = num;
+            break;
+          }
         }
       }
     }
@@ -913,11 +986,10 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
       const isTenInvalid =
         !rawTen ||
         !/[a-zA-ZÀ-ỹ]/.test(rawTen) ||
-        /^\d+$/.test(rawTen) ||
+        /\d/.test(rawTen) ||
         /^\d{1,2}[\/\-\.]\d{1,2}/.test(rawTen) ||
         /^[xvf\-\+\*10]$/i.test(rawTen) ||
-        VIETNAMESE_ETHNICITIES.has(rawTen.toLowerCase()) ||
-        /^(ngày\s*sinh|mã\s*hs|stt)$/i.test(rawTen);
+        /^(ngày\s*sinh|mã\s*hs|stt|dân\s*tộc)$/i.test(rawTen);
 
       if (isTenInvalid) {
         rawTen = '';
@@ -984,8 +1056,9 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
         if (/^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{4}$/.test(text)) return;
         // Ignore checkmarks
         if (/^[xvf\-\+\*10]$/i.test(text)) return;
-        // Ignore ethnicity
-        if (VIETNAMESE_ETHNICITIES.has(text.toLowerCase())) return;
+        // Ignore ethnicity column
+        if (currentHeaderCols.danTocCol !== -1 && idx === currentHeaderCols.danTocCol) return;
+        if (text.toLowerCase() === 'kinh') return;
         // Ignore assessment / score headers (TX1, GK, CK, ĐTB...)
         if (isAssessmentOrScoreHeader(text)) return;
         // Ignore academic ratings (Tốt, Khá, Đạt, Chưa đạt, Giỏi, TB...)
@@ -995,13 +1068,14 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
         // Ignore any text with digits (no person's name has digits)
         if (/\d/.test(text)) return;
 
-        // Ignore known non-name columns (STT, code, dob, gender)
+        // Ignore known non-name columns (STT, code, dob, gender, ethnicity)
         if (
           idx === currentHeaderCols.sttCol ||
           idx === currentHeaderCols.codeCol ||
           idx === currentHeaderCols.dobCol ||
           idx === currentHeaderCols.genderCol ||
-          idx === currentHeaderCols.genderFemaleCol
+          idx === currentHeaderCols.genderFemaleCol ||
+          idx === currentHeaderCols.danTocCol
         ) {
           return;
         }
@@ -1089,9 +1163,9 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
 
     // Roster anchor check:
     // A legitimate student row in a Vietnamese school roster/gradebook MUST either:
-    // 1. Have a valid STT number (1 to 250) or student code, OR
-    // 2. Have a legitimate Vietnamese full name (first word is a recognized Vietnamese surname)
-    const hasValidRosterAnchor = (rowStt && rowStt > 0 && rowStt < 250) || !!studentCode;
+    // 1. Have a valid STT number (1 to 10000) or student code, OR
+    // 2. Have a legitimate Vietnamese full name (first word is a recognized Vietnamese surname, or contains >= 2 words)
+    const hasValidRosterAnchor = (rowStt && rowStt > 0 && rowStt < 10000) || !!studentCode;
     if (!hasValidRosterAnchor) {
       const firstWord = checkWords[0] ? removeVietnameseDiacritics(checkWords[0]) : '';
       const isKnownSurname = VIETNAMESE_SURNAMES.has(firstWord) || (checkWords[0] && VIETNAMESE_SURNAMES.has(checkWords[0].toLowerCase()));
@@ -1101,18 +1175,27 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
       }
     }
 
-    // Deconstruct Họ & Tên
-    const allWords = rawFullName.split(/\s+/).filter(Boolean);
-    const finalTen = tenPart && !tenPart.includes(' ')
-      ? tenPart
-      : (allWords.length > 1 ? allWords[allWords.length - 1] : allWords[0] || '');
-    const finalHoVaChuLot = hoPart && hoPart !== rawFullName
-      ? hoPart
-      : (allWords.length > 1 ? allWords.slice(0, -1).join(' ') : (allWords[0] || ''));
+    // Deconstruct Họ & Tên theo chuẩn tiếng Việt:
+    // hoVaChuLot / lastName (Họ và chữ lót) lấy từ trái qua, ten / firstName (Tên) là từ cuối cùng
+    let finalHoVaChuLot = '';
+    let finalTen = '';
 
-    // Reconstruct full name consistently
-    if (finalHoVaChuLot && finalTen && !rawFullName.toLowerCase().endsWith(finalTen.toLowerCase())) {
-      rawFullName = `${finalHoVaChuLot} ${finalTen}`.trim();
+    if (hoPart && tenPart) {
+      if (hoPart.toLowerCase().endsWith(tenPart.toLowerCase())) {
+        const parts = splitVietnameseName(hoPart);
+        finalHoVaChuLot = parts.hoVaChuLot;
+        finalTen = parts.ten;
+        rawFullName = parts.fullName;
+      } else {
+        finalHoVaChuLot = hoPart.trim();
+        finalTen = tenPart.trim();
+        rawFullName = `${finalHoVaChuLot} ${finalTen}`.trim();
+      }
+    } else {
+      const parts = splitVietnameseName(rawFullName);
+      finalHoVaChuLot = parts.hoVaChuLot;
+      finalTen = parts.ten;
+      rawFullName = parts.fullName;
     }
 
     // Generate Standardized Student Username
@@ -1136,8 +1219,11 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     parsedStudents.push({
       stt: rowStt || (parsedStudents.length + 1),
       name: rawFullName,
+      fullName: rawFullName,
       hoVaChuLot: finalHoVaChuLot,
+      lastName: finalHoVaChuLot,
       ten: finalTen,
+      firstName: finalTen,
       studentCode,
       gender: gender || 'Nam',
       dob,
@@ -1147,13 +1233,20 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     });
   }
 
+  // BẢO ĐẢM 100% THỨ TỰ STT CHUẨN TỪ TRÊN XUỐNG DƯỚI THEO FILE EXCEL:
+  // Giữ nguyên tuyệt đối thứ tự các hàng (rows) từ trên xuống dưới theo đúng file gốc của giáo viên
+  // (STT 1, 2, 3... đến học sinh cuối cùng, không để xảy ra tình trạng bị thiếu học sinh cuối hoặc bị xáo trộn vị trí)
+  parsedStudents.forEach((st, idx) => {
+    st.stt = idx + 1;
+  });
+
   // Final summary
   const total = parsedStudents.length;
   let sttRangeSummary = '';
-  if (maxDetectedStt > 0) {
-    sttRangeSummary = `Từ STT 1 đến ${maxDetectedStt} (Tổng cộng: ${total} học sinh)`;
+  if (total > 0) {
+    sttRangeSummary = `Từ STT 1 đến ${total} (Tổng cộng: ${total} học sinh)`;
   } else {
-    sttRangeSummary = `Tổng cộng: ${total} học sinh`;
+    sttRangeSummary = `Tổng cộng: 0 học sinh`;
   }
 
   const success = total > 0;

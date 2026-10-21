@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ClassRoom, Student } from '../../types';
 import * as XLSX from 'xlsx';
-import { parseVietnameseSchoolExcel, parseVietnameseSchoolWorkbook, ParseExcelResult, isLikelyVietnameseName } from '../../utils/vietnameseExcelParser';
+import { parseVietnameseSchoolExcel, parseVietnameseSchoolWorkbook, ParseExcelResult, isLikelyVietnameseName, splitVietnameseName } from '../../utils/vietnameseExcelParser';
 import {
   Users,
   PlusCircle,
@@ -84,9 +84,10 @@ export const ClassManagement: React.FC = () => {
 
   // Selected class reference
   const currentClass = classes.find(c => c.id === selectedClassId) || classes[0];
-  const currentStudents = currentClass
+  const currentStudents = (currentClass
     ? students.filter(s => s.classId === currentClass.id)
-    : [];
+    : []
+  ).sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
 
   const filteredStudents = currentStudents.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -226,8 +227,15 @@ export const ClassManagement: React.FC = () => {
         }
 
         if (foundName) {
+          const parts = splitVietnameseName(foundName);
           parsed.push({
-            name: foundName,
+            stt: parsed.length + 1,
+            name: parts.fullName,
+            fullName: parts.fullName,
+            hoVaChuLot: parts.hoVaChuLot,
+            lastName: parts.lastName,
+            ten: parts.ten,
+            firstName: parts.firstName,
             studentCode: foundCode || undefined,
             dob: foundDob || undefined,
           });
@@ -238,7 +246,16 @@ export const ClassManagement: React.FC = () => {
       // Plain line format: remove leading STT e.g. "1. ", "1/ ", "STT 1: ", "01. "
       const cleanName = line.replace(/^(\d+[\.\/\-\)]\s*|stt\s*[:\s]*\d+[:\s]*)/i, '').trim();
       if (cleanName.length >= 2 && !/^(stt|họ và tên|danh sách|trường|lớp|niên học)/i.test(cleanName)) {
-        parsed.push({ name: cleanName });
+        const parts = splitVietnameseName(cleanName);
+        parsed.push({
+          stt: parsed.length + 1,
+          name: parts.fullName,
+          fullName: parts.fullName,
+          hoVaChuLot: parts.hoVaChuLot,
+          lastName: parts.lastName,
+          ten: parts.ten,
+          firstName: parts.firstName,
+        });
       }
     });
 
@@ -265,8 +282,14 @@ export const ClassManagement: React.FC = () => {
       return;
     }
 
+    const parts = splitVietnameseName(singleName.trim());
     addStudentToClass(currentClass.id, {
-      name: singleName.trim(),
+      name: parts.fullName,
+      fullName: parts.fullName,
+      hoVaChuLot: parts.hoVaChuLot,
+      lastName: parts.lastName,
+      ten: parts.ten,
+      firstName: parts.firstName,
       email: singleEmail.trim() || undefined,
       phone: singlePhone.trim() || undefined,
       gender: singleGender,
@@ -276,7 +299,7 @@ export const ClassManagement: React.FC = () => {
     setSingleEmail('');
     setSinglePhone('');
     setIsAddStudentOpen(false);
-    showToast(`Đã thêm học sinh "${singleName.trim()}" vào lớp!`);
+    showToast(`Đã thêm học sinh "${parts.fullName}" vào lớp!`);
   };
 
   // 5. Generate Accounts for All Students in Class
@@ -299,8 +322,9 @@ export const ClassManagement: React.FC = () => {
     currentStudents.forEach((st, idx) => {
       const words = st.name.trim().split(/\s+/).filter(Boolean);
       const ten = st.ten || (words.length > 1 ? words[words.length - 1] : words[0] || '');
-      const hoVaChuLot = st.hoVaChuLot || (words.length > 1 ? words.slice(0, -1).join(' ') : (words[0] || ''));
-      content += `${idx + 1}. ${st.name} (Họ đệm: ${hoVaChuLot} | Tên: ${ten}) | Tên đăng nhập: ${st.username || st.email} | Mật khẩu: ${st.password || '123456'}\n`;
+      const hoVaChuLot = st.hoVaChuLot || (words.length > 1 ? words.slice(0, -1).join(' ') : '');
+      const studentStt = st.stt || (idx + 1);
+      content += `${studentStt}. ${st.name} (Họ đệm: ${hoVaChuLot} | Tên: ${ten}) | Tên đăng nhập: ${st.username || st.email} | Mật khẩu: ${st.password || '123456'}\n`;
     });
     content += `=========================================================\n`;
     content += `* Cấu trúc đăng nhập: họ+tên+lớp+viết tắt trường+niên học (Ví dụ: Trần Thái An -> tranan11a1vts2627)\n`;
@@ -317,10 +341,10 @@ export const ClassManagement: React.FC = () => {
     const dataRows = currentStudents.map((st, idx) => {
       const words = st.name.trim().split(/\s+/).filter(Boolean);
       const ten = st.ten || (words.length > 1 ? words[words.length - 1] : words[0] || '');
-      const hoVaChuLot = st.hoVaChuLot || (words.length > 1 ? words.slice(0, -1).join(' ') : (words[0] || ''));
+      const hoVaChuLot = st.hoVaChuLot || (words.length > 1 ? words.slice(0, -1).join(' ') : '');
 
       return {
-        'STT': idx + 1,
+        'STT': st.stt || (idx + 1),
         'Mã học sinh': st.studentCode || '',
         'Họ và chữ lót': hoVaChuLot,
         'Tên': ten,
@@ -678,14 +702,15 @@ export const ClassManagement: React.FC = () => {
                       <tbody className="divide-y divide-slate-100">
                         {filteredStudents.map((st, idx) => {
                           const words = st.name.trim().split(/\s+/).filter(Boolean);
-                          const displayTen = st.ten || (words.length > 1 ? words[words.length - 1] : words[0] || '');
-                          const displayHoVaChuLot = st.hoVaChuLot || (words.length > 1 ? words.slice(0, -1).join(' ') : (words[0] || ''));
-                          const displayFullName = st.name.includes(displayTen) ? st.name : `${displayHoVaChuLot} ${displayTen}`.trim();
+                          const displayTen = st.ten || st.firstName || (words.length > 1 ? words[words.length - 1] : words[0] || '');
+                          const displayHoVaChuLot = st.hoVaChuLot || st.lastName || (words.length > 1 ? words.slice(0, -1).join(' ') : '');
+                          const displayFullName = st.fullName || st.name;
+                          const studentStt = st.stt || (idx + 1);
 
                           return (
                             <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
-                              <td className="py-3 px-2 text-center text-slate-400 font-mono">
-                                {idx + 1}
+                              <td className="py-3 px-2 text-center text-slate-500 font-mono font-bold">
+                                {studentStt}
                               </td>
                               <td className="py-3 px-3 font-medium text-slate-800">
                                 {displayHoVaChuLot || '—'}
@@ -1048,10 +1073,10 @@ export const ClassManagement: React.FC = () => {
                       <tbody className="divide-y divide-slate-100">
                         {excelPreview.students.map((st, i) => (
                           <tr key={i} className="hover:bg-slate-50">
-                            <td className="py-1.5 px-2 text-center text-slate-400 font-mono font-bold">{st.stt || i + 1}</td>
-                            <td className="py-1.5 px-2.5 text-slate-700">{st.hoVaChuLot || '—'}</td>
-                            <td className="py-1.5 px-2.5 font-bold text-emerald-800 bg-emerald-50/50">{st.ten || '—'}</td>
-                            <td className="py-1.5 px-3 font-bold text-slate-900">{st.name}</td>
+                            <td className="py-1.5 px-2 text-center text-slate-500 font-mono font-bold">{st.stt || i + 1}</td>
+                            <td className="py-1.5 px-2.5 text-slate-700">{st.hoVaChuLot || st.lastName || '—'}</td>
+                            <td className="py-1.5 px-2.5 font-bold text-emerald-800 bg-emerald-50/50">{st.ten || st.firstName || '—'}</td>
+                            <td className="py-1.5 px-3 font-bold text-slate-900">{st.fullName || st.name}</td>
                             <td className="py-1.5 px-2.5 font-mono text-[11px] font-bold text-emerald-700 bg-emerald-50/40">
                               {st.username || '—'}
                             </td>

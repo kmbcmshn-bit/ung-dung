@@ -22,7 +22,7 @@ import {
   INITIAL_TEACHER,
   INITIAL_COMPLAINTS,
 } from '../data/mockData';
-import { generateStudentUsername } from '../utils/vietnameseExcelParser';
+import { generateStudentUsername, splitVietnameseName } from '../utils/vietnameseExcelParser';
 import {
   subscribeClasses,
   syncSaveClass,
@@ -296,17 +296,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
         setStudents(prev => {
+          let list: Student[];
           if (remoteStudents.length >= prev.length) {
-            return remoteStudents;
-          }
-          const remoteMap = new Map(remoteStudents.map(s => [s.id, s]));
-          const merged = [...remoteStudents];
-          for (const localSt of prev) {
-            if (!remoteMap.has(localSt.id)) {
-              merged.push(localSt);
+            list = remoteStudents;
+          } else {
+            const remoteMap = new Map(remoteStudents.map(s => [s.id, s]));
+            const merged = [...remoteStudents];
+            for (const localSt of prev) {
+              if (!remoteMap.has(localSt.id)) {
+                merged.push(localSt);
+              }
             }
+            list = merged;
           }
-          return merged;
+          // Luôn luôn sắp xếp (sort) danh sách học sinh theo đúng số thứ tự STT tăng dần
+          return list.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
         });
       } else {
         const filtered = INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
@@ -426,14 +430,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newStudents: Student[] = list.map((item, index) => {
       const studentId = `st-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`;
-      let name = item.name?.trim() || `Học sinh ${index + 1}`;
-      let ten = item.ten?.trim();
-      let hoVaChuLot = item.hoVaChuLot?.trim();
+      const stt = (typeof item.stt === 'number' && item.stt > 0) ? item.stt : (index + 1);
+      let name = item.name?.trim() || item.fullName?.trim() || `Học sinh ${index + 1}`;
+      let ten = item.ten?.trim() || item.firstName?.trim();
+      let hoVaChuLot = item.hoVaChuLot?.trim() || item.lastName?.trim();
 
       if (!ten || !hoVaChuLot) {
-        const words = name.split(/\s+/).filter(Boolean);
-        if (!ten) ten = words.length > 1 ? words[words.length - 1] : words[0] || '';
-        if (!hoVaChuLot) hoVaChuLot = words.length > 1 ? words.slice(0, -1).join(' ') : (words[0] || '');
+        const parts = splitVietnameseName(name);
+        ten = parts.ten;
+        hoVaChuLot = parts.hoVaChuLot;
+        name = parts.fullName;
       }
 
       // Ensure full name combines both Họ & chữ lót and Tên
@@ -460,9 +466,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       return {
         id: studentId,
+        stt,
         name,
+        fullName: name,
         hoVaChuLot,
+        lastName: hoVaChuLot,
         ten,
+        firstName: ten,
         studentCode,
         email: item.email || `${username}@edusmart.edu.vn`,
         username,
@@ -486,7 +496,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setStudents(prev => {
       const base = replaceExisting ? prev.filter(s => s.classId !== classId) : prev;
-      return [...base, ...newStudents];
+      const combined = [...base, ...newStudents];
+      return combined.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
     });
 
     if (replaceExisting && oldStudentsInClass.length > 0) {
@@ -549,11 +560,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const studentId = `st-${Date.now()}`;
 
+    const currentClassStudents = students.filter(s => s.classId === classId);
+    const nextStt = currentClassStudents.length + 1;
+
     const newStudent: Student = {
       id: studentId,
+      stt: nextStt,
       name,
+      fullName: name,
       hoVaChuLot,
+      lastName: hoVaChuLot,
       ten,
+      firstName: ten,
       email: studentData.email || `${username}@edusmart.edu.vn`,
       username,
       password: studentData.password || '123456',
@@ -572,7 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       className,
     };
 
-    setStudents(prev => [...prev, newStudent]);
+    setStudents(prev => [...prev, newStudent].sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0)));
     syncSaveStudent(newStudent).catch(console.error);
     if (!currentStudentId) {
       setCurrentStudentIdState(studentId);
