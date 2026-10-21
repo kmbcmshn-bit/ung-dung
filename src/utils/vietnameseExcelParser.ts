@@ -59,6 +59,65 @@ export function cleanTextCell(val: any): string {
 }
 
 /**
+ * Converts an XLSX worksheet into an absolute 2D matrix (dense array of rows and columns).
+ * Crucial for vnEdu / SMAS: Prevents xlsx library from skipping sparse rows or rows with empty cells,
+ * ensuring 100% of rows are preserved from top to bottom.
+ */
+export function sheetToDenseMatrix(worksheet: XLSX.WorkSheet): any[][] {
+  if (!worksheet) return [];
+  if (!worksheet['!ref']) {
+    return XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: '',
+      blankrows: true,
+      raw: false,
+    }) as any[][];
+  }
+
+  const range = XLSX.utils.decode_range(worksheet['!ref']);
+  const matrix: any[][] = [];
+  const merges = worksheet['!merges'] || [];
+
+  for (let R = range.s.r; R <= range.e.r; ++R) {
+    const row: any[] = [];
+    let hasAnyData = false;
+
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      let cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+      let cell = worksheet[cellAddress];
+
+      if ((cell === undefined || cell === null || cell.v === undefined || cell.v === '') && merges.length > 0) {
+        for (const m of merges) {
+          if (R >= m.s.r && R <= m.e.r && C >= m.s.c && C <= m.e.c) {
+            const originAddress = XLSX.utils.encode_cell({ r: m.s.r, c: m.s.c });
+            cell = worksheet[originAddress];
+            break;
+          }
+        }
+      }
+
+      let val: any = '';
+      if (cell !== undefined && cell !== null) {
+        val = cell.w !== undefined ? cell.w : (cell.v !== undefined ? cell.v : '');
+      }
+
+      const cleaned = cleanTextCell(val);
+      if (cleaned.length > 0) {
+        hasAnyData = true;
+      }
+      row.push(val);
+    }
+
+    // Keep all rows that have at least one cell with information
+    if (hasAnyData) {
+      matrix.push(row);
+    }
+  }
+
+  return matrix;
+}
+
+/**
  * Generate standard student username:
  * Cấu trúc: họ + tên + lớp + viết tắt trường + niên học
  * Ví dụ: Nguyễn Tiến Đạt, Lớp 11A1, THPT Võ Thị Sáu, Niên học 2026-2027 -> nguyendat11a1vts2627
@@ -529,7 +588,33 @@ function isHeaderOrBannerRow(row: any[]): boolean {
 
   const rowTextAll = nonEmpties.map(c => c.toLowerCase()).join(' ');
 
-  // 1. Explicit table headers: has STT label AND (Name label OR Student Code label)
+  // 1. Column numbering row e.g. (1), (2), (3), (4)...
+  let parensNumberingCount = 0;
+  for (const c of nonEmpties) {
+    if (/^\(\d+\)$/.test(c) || (c.length <= 2 && /^\d+$/.test(c))) {
+      parensNumberingCount++;
+    }
+  }
+  if (parensNumberingCount >= 3 && parensNumberingCount >= nonEmpties.length - 1) {
+    return true;
+  }
+
+  // 2. CRITICAL ANCHOR RULE FOR STUDENT ROWS:
+  // If the row starts with a valid numeric STT (1 to 10000) in cell 0, 1, 2, or 3,
+  // OR contains a 6-14 digit student code,
+  // IT IS 100% A STUDENT DATA ROW, NEVER A HEADER OR BANNER!
+  const hasSttNumber = nonEmpties.slice(0, 4).some(c => {
+    const match = c.match(/^\s*(\d{1,5})\s*[\.\:\-\)\/]?$/);
+    if (!match) return false;
+    const num = parseInt(match[1], 10);
+    return num > 0 && num < 10000;
+  });
+  const hasCode = nonEmpties.slice(0, 4).some(c => /^\d{6,14}$/.test(c) || /^HS\d{4,10}$/i.test(c));
+  if (hasSttNumber || hasCode) {
+    return false; // Student row!
+  }
+
+  // 3. Explicit table headers: has STT label AND (Name label OR Student Code label)
   const hasSttLabel = nonEmpties.some(c => /^(stt|số\s*tt|số\s*thứ\s*tự|no\.?)$/i.test(c));
   const hasNameLabel = nonEmpties.some(c => /(họ\s*(và|&)?\s*tên|họ\s*(và|&)?\s*(chữ\s*)?lót|tên\s*học\s*sinh|^tên$)/i.test(c));
   const hasCodeLabel = nonEmpties.some(c => /(mã\s*(hs|học\s*sinh|định\s*danh)|mshs|sbd)/i.test(c));
@@ -537,7 +622,7 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     return true;
   }
 
-  // 2. Sub-header row for name columns:
+  // 4. Sub-header row for name columns:
   // e.g. ['', '', 'Họ và chữ lót', 'Tên', '', '', ''] or ['Họ và đệm', 'Tên']
   const hasHoLabel = nonEmpties.some(c => /^(họ\s*(và|&)?\s*(chữ\s*)?lót|họ\s*(và|&)?\s*(tên\s*)?đệm|họ\s*đệm|họ\s*lót|^họ)$/i.test(c));
   const hasTenLabel = nonEmpties.some(c => /^(tên|tên\s*gọi|tên\s*hs|tên\s*học\s*sinh)$/i.test(c));
@@ -545,7 +630,7 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     return true;
   }
 
-  // 3. Footer summary / statistics signatures:
+  // 5. Footer summary / statistics signatures:
   if (
     rowTextAll.startsWith('thống kê') ||
     rowTextAll.startsWith('người lập') ||
@@ -560,21 +645,6 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     (rowTextAll.includes('ngày') && rowTextAll.includes('tháng') && rowTextAll.includes('năm') && nonEmpties.length <= 4)
   ) {
     return true;
-  }
-
-  // 4. CRITICAL ANCHOR RULE FOR STUDENT ROWS:
-  // If the row starts with a valid numeric STT (1 to 10000) in cell 0, 1, 2, or 3,
-  // OR contains a 6-14 digit student code,
-  // IT IS 100% A STUDENT DATA ROW, NEVER A HEADER OR BANNER!
-  const hasSttNumber = nonEmpties.slice(0, 4).some(c => {
-    const match = c.match(/^\s*(\d{1,5})\s*[\.\:\-\)\/]?$/);
-    if (!match) return false;
-    const num = parseInt(match[1], 10);
-    return num > 0 && num < 10000;
-  });
-  const hasCode = nonEmpties.slice(0, 4).some(c => /^\d{6,14}$/.test(c) || /^HS\d{4,10}$/i.test(c));
-  if (hasSttNumber || hasCode) {
-    return false; // Student row!
   }
 
   // 5. School/Class title banner (spanning 1 to 4 cells)
@@ -597,18 +667,7 @@ function isHeaderOrBannerRow(row: any[]): boolean {
     return true;
   }
 
-  // 8. Column numbering row e.g. (1), (2), (3), (4)...
-  let parensNumberingCount = 0;
-  for (const c of nonEmpties) {
-    if (/^\(\d+\)$/.test(c) || (c.length <= 2 && /^\d+$/.test(c))) {
-      parensNumberingCount++;
-    }
-  }
-  if (parensNumberingCount >= 3 && parensNumberingCount >= nonEmpties.length - 1) {
-    return true;
-  }
-
-  // 9. If ALL non-empty cells in the row are assessment headers, ratings, numbers, or percentages
+  // 8. If ALL non-empty cells in the row are assessment headers, ratings, numbers, or percentages
   const allAreHeadersOrRatings = nonEmpties.every(c =>
     isAssessmentOrScoreHeader(c) ||
     isAcademicRatingOrEvaluation(c) ||
@@ -1284,14 +1343,10 @@ export function parseVietnameseSchoolWorkbook(workbook: any, preferredClassName?
     };
   }
 
-  // If single sheet, use standard parser
+  // If single sheet, use standard parser with sheetToDenseMatrix
   if (workbook.SheetNames.length === 1) {
     const sheetName = workbook.SheetNames[0];
-    const rawJson: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-      header: 1,
-      defval: '',
-      blankrows: false,
-    });
+    const rawJson = sheetToDenseMatrix(workbook.Sheets[sheetName]);
     return parseVietnameseSchoolExcel(rawJson, preferredClassName);
   }
 
@@ -1311,11 +1366,7 @@ export function parseVietnameseSchoolWorkbook(workbook: any, preferredClassName?
   // Parse all target sheets and combine them
   const sheetResults: { sheetName: string; result: ParseExcelResult }[] = [];
   for (const sheetName of targetSheetNames) {
-    const rawJson: any[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-      header: 1,
-      defval: '',
-      blankrows: false,
-    });
+    const rawJson = sheetToDenseMatrix(workbook.Sheets[sheetName]);
     const res = parseVietnameseSchoolExcel(rawJson, preferredClassName);
     if (res.success && res.students.length > 0) {
       sheetResults.push({ sheetName, result: res });

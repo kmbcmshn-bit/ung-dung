@@ -166,12 +166,16 @@ export async function syncBatchSaveStudents(studentList: Student[]) {
   if (studentList.length === 0) return;
   const path = 'students';
   try {
-    const batch = writeBatch(db);
-    studentList.forEach((st) => {
-      const ref = doc(db, 'students', st.id);
-      batch.set(ref, sanitizeData(st), { merge: true });
-    });
-    await batch.commit();
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < studentList.length; i += CHUNK_SIZE) {
+      const chunk = studentList.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((st) => {
+        const ref = doc(db, 'students', st.id);
+        batch.set(ref, sanitizeData(st), { merge: true });
+      });
+      await batch.commit();
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }
@@ -180,16 +184,27 @@ export async function syncBatchSaveStudents(studentList: Student[]) {
 export async function syncBatchReplaceStudents(oldStudentIds: string[], newStudents: Student[]) {
   const path = 'students';
   try {
-    const batch = writeBatch(db);
-    oldStudentIds.forEach((id) => {
-      const ref = doc(db, 'students', id);
-      batch.delete(ref);
-    });
-    newStudents.forEach((st) => {
-      const ref = doc(db, 'students', st.id);
-      batch.set(ref, sanitizeData(st), { merge: true });
-    });
-    await batch.commit();
+    const CHUNK_SIZE = 400;
+    // Step 1: Delete old students in chunks of 400
+    for (let i = 0; i < oldStudentIds.length; i += CHUNK_SIZE) {
+      const chunk = oldStudentIds.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((id) => {
+        const ref = doc(db, 'students', id);
+        batch.delete(ref);
+      });
+      await batch.commit();
+    }
+    // Step 2: Add new students in chunks of 400
+    for (let i = 0; i < newStudents.length; i += CHUNK_SIZE) {
+      const chunk = newStudents.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      chunk.forEach((st) => {
+        const ref = doc(db, 'students', st.id);
+        batch.set(ref, sanitizeData(st), { merge: true });
+      });
+      await batch.commit();
+    }
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
   }

@@ -84,6 +84,7 @@ export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps>
 
   // Loading & Feedback
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [successResult, setSuccessResult] = useState<string | null>(null);
   const [errorResult, setErrorResult] = useState<string | null>(null);
@@ -110,13 +111,23 @@ export const CreateOrRecreateExamModal: React.FC<CreateOrRecreateExamModalProps>
         const resultStr = reader.result as string;
         // Extract pure base64
         const base64Data = resultStr.includes(',') ? resultStr.split(',')[1] : resultStr;
+        let resolvedMime = file.type;
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        if (!resolvedMime) {
+          if (ext === 'pdf') resolvedMime = 'application/pdf';
+          else if (ext === 'docx') resolvedMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          else if (ext === 'xlsx') resolvedMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+          else if (ext === 'png') resolvedMime = 'image/png';
+          else if (ext === 'jpg' || ext === 'jpeg') resolvedMime = 'image/jpeg';
+          else resolvedMime = 'application/octet-stream';
+        }
 
         setUploadedFile({
           name: file.name,
           size: file.size,
-          type: file.type || (file.name.endsWith('.docx') ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf'),
+          type: resolvedMime,
           base64: base64Data,
-          previewUrl: file.type.startsWith('image/') ? resultStr : undefined,
+          previewUrl: resolvedMime.startsWith('image/') ? resultStr : undefined,
           extractedText: extracted,
           parsedStructure,
         });
@@ -213,12 +224,12 @@ Phần III: 1 câu tự luận:
   // Action: Parse Matrix from File
   const handleParseFile = async () => {
     if (!uploadedFile) return;
-    setIsLoading(true);
-    setStatusMessage(`Gemini AI đang nạp 100% nội dung ma trận "${uploadedFile.name}" và biên soạn câu hỏi...`);
+    setStatusMessage('Đang phân tích tệp PDF & bóc tách ma trận chuẩn BGD...');
     setSuccessResult(null);
     setErrorResult(null);
 
     try {
+      setIsAnalyzing(true);
       const res = await parseMatrixFromFile(
         uploadedFile.base64,
         uploadedFile.type,
@@ -234,15 +245,22 @@ Phần III: 1 câu tự luận:
         }
       );
 
-      setIsLoading(false);
       if (res && res.success) {
         setSuccessResult(res.message);
+        setTimeout(() => {
+          onOpenPreview();
+        }, 1200);
       } else {
-        setErrorResult(res?.message || 'Có lỗi xảy ra khi bóc tách ma trận.');
+        const errMsg = res?.message || 'Có lỗi xảy ra khi bóc tách ma trận.';
+        setErrorResult(errMsg);
+        alert('Lỗi xử lý file: ' + errMsg);
       }
     } catch (err: any) {
-      setIsLoading(false);
+      console.error(err);
+      alert('Lỗi xử lý file: ' + (err?.message || 'Lỗi kết nối khi bóc tách ma trận.'));
       setErrorResult(err?.message || 'Lỗi kết nối khi bóc tách ma trận.');
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -276,7 +294,23 @@ Phần III: 1 câu tự luận:
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] p-6 shadow-2xl border border-slate-200 flex flex-col">
+      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] p-6 shadow-2xl border border-slate-200 flex flex-col relative overflow-hidden">
+        {/* Visual Loading Overlay when Analyzing Multimodal File */}
+        {isAnalyzing && (
+          <div className="absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center p-6 text-white space-y-4 animate-fadeIn">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 shadow-xl shadow-emerald-500/10">
+              <RefreshCw className="w-8 h-8 animate-spin" />
+            </div>
+            <div className="text-center space-y-1.5 max-w-md">
+              <h4 className="font-bold text-base text-emerald-300">
+                Đang phân tích tệp PDF & bóc tách ma trận chuẩn BGD...
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Hệ thống AI Multimodal đang trích xuất dữ liệu nhị phân, bóc tách cấu trúc ma trận chuẩn 3 phần GDPT 2018 và tự động biên soạn đề thi.
+              </p>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
           <div className="flex items-center gap-2.5">
@@ -758,11 +792,20 @@ Phần III: 1 câu tự luận:
                   <button
                     type="button"
                     onClick={handleParseFile}
-                    disabled={isLoading || !uploadedFile}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50"
+                    disabled={isLoading || isAnalyzing || !uploadedFile}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all disabled:opacity-50 cursor-pointer"
                   >
-                    <FileUp className="w-4 h-4" />
-                    <span>AI Bóc Tách Ma Trận File</span>
+                    {isAnalyzing ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang bóc tách ma trận...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileUp className="w-4 h-4" />
+                        <span>🤖 AI Bóc Tách Ma Trận File</span>
+                      </>
+                    )}
                   </button>
                 )}
 

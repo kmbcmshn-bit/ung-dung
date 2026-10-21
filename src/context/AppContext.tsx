@@ -55,9 +55,10 @@ export interface AppContextType {
   teacherRegister: (profile: Partial<TeacherProfile>, password?: string) => { success: boolean; message: string; teacher: TeacherProfile };
   teacherLogout: () => void;
   classes: ClassRoom[];
+  setClasses: React.Dispatch<React.SetStateAction<ClassRoom[]>>;
   addClass: (newClass: ClassRoom) => void;
   updateClass: (updated: ClassRoom) => void;
-  deleteClass: (id: string) => void;
+  deleteClass: (id: string) => Promise<void> | void;
   students: Student[];
   currentStudent: Student | null;
   setCurrentStudentId: (id: string | null) => void;
@@ -292,23 +293,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // 2. Students subscription (Never drop local imported students during batch write lag)
+    // 2. Students subscription (Merge by ID: Never drop local imported students during batch write lag)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       if (remoteStudents && remoteStudents.length > 0) {
         setStudents(prev => {
-          let list: Student[];
-          if (remoteStudents.length >= prev.length) {
-            list = remoteStudents;
-          } else {
-            const remoteMap = new Map(remoteStudents.map(s => [s.id, s]));
-            const merged = [...remoteStudents];
-            for (const localSt of prev) {
-              if (!remoteMap.has(localSt.id)) {
-                merged.push(localSt);
-              }
+          const studentMap = new Map<string, Student>();
+          for (const s of remoteStudents) {
+            if (s) {
+              const safeId = s.id || `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+              studentMap.set(safeId, { ...s, id: safeId });
             }
-            list = merged;
           }
+          // Retain any local students that were just added and not yet received from snapshot
+          for (const localSt of prev) {
+            if (localSt && localSt.id && !studentMap.has(localSt.id)) {
+              studentMap.set(localSt.id, localSt);
+            }
+          }
+          const list = Array.from(studentMap.values());
           // Luôn luôn sắp xếp (sort) danh sách học sinh theo đúng số thứ tự STT tăng dần
           return list.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
         });
@@ -391,9 +393,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     syncSaveClass(updated).catch(console.error);
   };
 
-  const deleteClass = (id: string) => {
+  const deleteClass = async (id: string) => {
     setClasses(prev => prev.filter(c => c.id !== id));
-    syncDeleteClass(id).catch(console.error);
+    await syncDeleteClass(id).catch(console.error);
     // Also remove students belonging to this class
     const toRemoveStudents = students.filter(s => s.classId === id);
     toRemoveStudents.forEach(st => syncDeleteStudent(st.id).catch(console.error));
@@ -427,9 +429,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : students;
 
     const usedUsernames = new Set(otherStudents.map(s => s.username?.toLowerCase()).filter(Boolean));
+    const usedIds = new Set(otherStudents.map(s => s.id));
+    const usedCodes = new Set(otherStudents.map(s => s.studentCode?.toLowerCase()).filter(Boolean));
 
     const newStudents: Student[] = list.map((item, index) => {
-      const studentId = `st-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`;
+      // 1. Guaranteed unique ID
+      let studentId = item.id;
+      if (!studentId || usedIds.has(studentId)) {
+        studentId = `st-${classId}-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 8)}`;
+      }
+      while (usedIds.has(studentId)) {
+        studentId = `st-${classId}-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 8)}`;
+      }
+      usedIds.add(studentId);
+
       const stt = (typeof item.stt === 'number' && item.stt > 0) ? item.stt : (index + 1);
       let name = item.name?.trim() || item.fullName?.trim() || `Học sinh ${index + 1}`;
       let ten = item.ten?.trim() || item.firstName?.trim();
@@ -447,20 +460,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         name = `${hoVaChuLot} ${ten}`.trim();
       }
 
-      const studentCode = item.studentCode ? String(item.studentCode).trim() : undefined;
-
-      // Cấu trúc họ+tên+lớp+viết tắt trường+niên học (ví dụ: Trần Thái An -> tranan11a1vts2627)
-      let username = item.username;
-      if (!username) {
-        let candidate = generateStudentUsername(name, className, schoolName, academicYear, 0, hoVaChuLot, ten);
-        let count = 1;
-        while (usedUsernames.has(candidate.toLowerCase())) {
-          count++;
-          candidate = `${generateStudentUsername(name, className, schoolName, academicYear, 0, hoVaChuLot, ten)}_${count}`;
-        }
-        username = candidate;
+      // 2. Guaranteed unique student code
+      let studentCode = item.studentCode ? String(item.studentCode).trim() : undefined;
+      if (studentCode && (studentCode === '0' || studentCode === 'None' || studentCode === 'null')) {
+        studentCode = undefined;
       }
-      usedUsernames.add(username.toLowerCase());
+      if (studentCode) {
+        if (usedCodes.has(studentCode.toLowerCase())) {
+          let cCount = 1;
+          let newCode = `${studentCode}_${cCount}`;
+          while (usedCodes.has(newCode.toLowerCase())) {
+            cCount++;
+            newCode = `${studentCode}_${cCount}`;
+          }
+          studentCode = newCode;
+        }
+        usedCodes.add(studentCode.toLowerCase());
+      }
+
+      // 3. Guaranteed unique username (resolving collision even if item.username is passed)
+      let candidate = item.username?.trim() || generateStudentUsername(name, className, schoolName, academicYear, 0, hoVaChuLot, ten);
+      let finalUsername = candidate;
+      let count = 1;
+      while (usedUsernames.has(finalUsername.toLowerCase())) {
+        count++;
+        finalUsername = `${candidate}_${count}`;
+      }
+      usedUsernames.add(finalUsername.toLowerCase());
+      const username = finalUsername;
 
       const password = item.password || '123456';
 
@@ -496,7 +523,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setStudents(prev => {
       const base = replaceExisting ? prev.filter(s => s.classId !== classId) : prev;
-      const combined = [...base, ...newStudents];
+      const existingIds = new Set(base.map(s => s.id));
+      const filteredNew = newStudents.filter(s => !existingIds.has(s.id));
+      const combined = [...base, ...filteredNew];
       return combined.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
     });
 
@@ -1656,6 +1685,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         teacherRegister,
         teacherLogout,
         classes,
+        setClasses,
         addClass,
         updateClass,
         deleteClass,

@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ClassRoom, Student } from '../../types';
 import * as XLSX from 'xlsx';
-import { parseVietnameseSchoolExcel, parseVietnameseSchoolWorkbook, ParseExcelResult, isLikelyVietnameseName, splitVietnameseName } from '../../utils/vietnameseExcelParser';
+import { parseVietnameseSchoolExcel, parseVietnameseSchoolWorkbook, ParseExcelResult, isLikelyVietnameseName, splitVietnameseName, sheetToDenseMatrix } from '../../utils/vietnameseExcelParser';
 import {
   Users,
   PlusCircle,
@@ -32,6 +32,7 @@ import {
 export const ClassManagement: React.FC = () => {
   const {
     classes,
+    setClasses,
     addClass,
     updateClass,
     deleteClass,
@@ -59,6 +60,8 @@ export const ClassManagement: React.FC = () => {
   const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
   const [excelPreview, setExcelPreview] = useState<ParseExcelResult | null>(null);
   const [replaceExisting, setReplaceExisting] = useState<boolean>(true);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
 
   // New Class Form state
   const [newClassName, setNewClassName] = useState<string>('11A1');
@@ -98,6 +101,29 @@ export const ClassManagement: React.FC = () => {
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ type, message });
     setTimeout(() => setNotification(null), 4000);
+  };
+
+  // Delete Class Confirm Handler with try-catch-finally and immediate state update
+  const handleDeleteClassConfirm = async () => {
+    if (!classToDelete) return;
+    const targetId = classToDelete.id;
+    const targetName = classToDelete.name;
+    setIsDeleting(true);
+    setLoading(true);
+    try {
+      await deleteClass(targetId);
+      setClasses(prev => prev.filter(c => c.id !== targetId));
+      const remaining = classes.filter(c => c.id !== targetId);
+      setSelectedClassId(remaining[0]?.id || '');
+      setClassToDelete(null);
+      showToast(`Đã xóa thành công lớp "${targetName}"!`);
+    } catch (error) {
+      console.error(error);
+      alert("Lỗi xóa lớp");
+    } finally {
+      setIsDeleting(false);
+      setLoading(false);
+    }
   };
 
   // 1. Create Class
@@ -142,11 +168,7 @@ export const ClassManagement: React.FC = () => {
         } else {
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, {
-            header: 1,
-            defval: '',
-            blankrows: false,
-          });
+          const rawJson = sheetToDenseMatrix(worksheet);
 
           if (!rawJson || rawJson.length === 0) {
             showToast('Tệp không chứa dữ liệu hợp lệ.', 'error');
@@ -708,7 +730,7 @@ export const ClassManagement: React.FC = () => {
                           const studentStt = st.stt || (idx + 1);
 
                           return (
-                            <tr key={st.id} className="hover:bg-slate-50/70 transition-colors">
+                            <tr key={st.id ? `${st.id}-${studentStt}-${idx}` : `student-${studentStt}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
                               <td className="py-3 px-2 text-center text-slate-500 font-mono font-bold">
                                 {studentStt}
                               </td>
@@ -1422,26 +1444,29 @@ export const ClassManagement: React.FC = () => {
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
               <button
                 type="button"
+                disabled={isDeleting || loading}
                 onClick={() => setClassToDelete(null)}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-xl border border-slate-200 font-semibold text-xs text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
               >
                 Hủy bỏ
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const targetId = classToDelete.id;
-                  const targetName = classToDelete.name;
-                  deleteClass(targetId);
-                  const remaining = classes.filter(c => c.id !== targetId);
-                  setSelectedClassId(remaining[0]?.id || '');
-                  setClassToDelete(null);
-                  showToast(`Đã xóa thành công lớp "${targetName}"!`);
-                }}
-                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md shadow-red-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                disabled={isDeleting || loading}
+                onClick={handleDeleteClassConfirm}
+                className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-xs shadow-md shadow-red-600/20 transition-all cursor-pointer flex items-center gap-1.5"
               >
-                <Trash2 className="w-4 h-4" />
-                <span>Xác Nhận Xóa Lớp</span>
+                {isDeleting || loading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang xóa lớp...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Xác Nhận Xóa Lớp</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
