@@ -879,6 +879,46 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     currentHeaderCols.fullNameCol = -1;
   }
 
+  // Auto-detect split "Họ và tên" + "Tên" when header merged under single "Họ và tên"
+  if (currentHeaderCols.hoCol === -1 && currentHeaderCols.fullNameCol !== -1 && currentHeaderCols.tenCol === -1) {
+    const candidateTenCol = currentHeaderCols.fullNameCol + 1;
+    const isCandidateOtherCol =
+      candidateTenCol === currentHeaderCols.sttCol ||
+      candidateTenCol === currentHeaderCols.codeCol ||
+      candidateTenCol === currentHeaderCols.dobCol ||
+      candidateTenCol === currentHeaderCols.genderCol ||
+      candidateTenCol === currentHeaderCols.genderFemaleCol ||
+      candidateTenCol === currentHeaderCols.danTocCol ||
+      candidateTenCol === currentHeaderCols.phoneCol ||
+      candidateTenCol === currentHeaderCols.emailCol;
+
+    if (!isCandidateOtherCol) {
+      let sampleCount = 0;
+      let likelyGivenNameCount = 0;
+      let genderOnlyCount = 0;
+
+      for (let r = primaryHeaderIdx + 1; r < Math.min(rawJson.length, primaryHeaderIdx + 25); r++) {
+        const sampleRow = rawJson[r];
+        if (!sampleRow || !Array.isArray(sampleRow)) continue;
+        const fnVal = cleanTextCell(sampleRow[currentHeaderCols.fullNameCol]);
+        if (!fnVal || !/[a-zA-ZÀ-ỹ]/.test(fnVal)) continue;
+
+        const val = cleanTextCell(sampleRow[candidateTenCol]);
+        if (!val) continue;
+
+        sampleCount++;
+        if (isLikelyGivenName(val)) likelyGivenNameCount++;
+        if (/^(nam|nữ|nu|m|f|x|v)$/i.test(val)) genderOnlyCount++;
+      }
+
+      if (sampleCount >= 2 && likelyGivenNameCount >= sampleCount * 0.6 && genderOnlyCount < sampleCount * 0.6) {
+        currentHeaderCols.hoCol = currentHeaderCols.fullNameCol;
+        currentHeaderCols.tenCol = candidateTenCol;
+        currentHeaderCols.fullNameCol = -1;
+      }
+    }
+  }
+
   const parsedStudents: ParsedStudentRow[] = [];
   const usedUsernames = new Map<string, number>();
   let maxDetectedStt = 0;
@@ -917,6 +957,21 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
       ) {
         currentHeaderCols.hoCol = currentHeaderCols.fullNameCol;
         currentHeaderCols.fullNameCol = -1;
+      } else if (currentHeaderCols.hoCol === -1 && currentHeaderCols.fullNameCol !== -1 && currentHeaderCols.tenCol === -1) {
+        // Auto-detect split under repeated header as well
+        const candidateTenCol = currentHeaderCols.fullNameCol + 1;
+        const isCandOther =
+          candidateTenCol === currentHeaderCols.sttCol ||
+          candidateTenCol === currentHeaderCols.codeCol ||
+          candidateTenCol === currentHeaderCols.dobCol ||
+          candidateTenCol === currentHeaderCols.genderCol ||
+          candidateTenCol === currentHeaderCols.genderFemaleCol ||
+          candidateTenCol === currentHeaderCols.danTocCol;
+        if (!isCandOther) {
+          currentHeaderCols.hoCol = currentHeaderCols.fullNameCol;
+          currentHeaderCols.tenCol = candidateTenCol;
+          currentHeaderCols.fullNameCol = -1;
+        }
       }
       // Skip the header row itself: NEVER add a table header as a student!
       continue;
@@ -1079,19 +1134,28 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
     } else if (currentHeaderCols.fullNameCol !== -1 && row[currentHeaderCols.fullNameCol] !== undefined) {
       rawFullName = cleanTextCell(row[currentHeaderCols.fullNameCol]);
       // Also inspect if adjacent cell has the given name (e.g. vnEdu split/merged columns)
-      if (row[currentHeaderCols.fullNameCol + 1] !== undefined) {
-        const nextVal = cleanTextCell(row[currentHeaderCols.fullNameCol + 1]);
-        if (isLikelyGivenName(nextVal)) {
-          // Only append if rawFullName is NOT already a complete full name (>= 3 words with known surname)
-          const existingWords = rawFullName.split(/\s+/).filter(Boolean);
-          const isAlreadyCompleteFullName =
-            existingWords.length >= 3 &&
-            (VIETNAMESE_SURNAMES.has(removeVietnameseDiacritics(existingWords[0])) ||
-             VIETNAMESE_SURNAMES.has(existingWords[0].toLowerCase()));
+      const nextColIdx = currentHeaderCols.fullNameCol + 1;
+      const isNextColOther =
+        nextColIdx === currentHeaderCols.sttCol ||
+        nextColIdx === currentHeaderCols.codeCol ||
+        nextColIdx === currentHeaderCols.dobCol ||
+        nextColIdx === currentHeaderCols.genderCol ||
+        nextColIdx === currentHeaderCols.genderFemaleCol ||
+        nextColIdx === currentHeaderCols.danTocCol ||
+        nextColIdx === currentHeaderCols.phoneCol ||
+        nextColIdx === currentHeaderCols.emailCol;
 
-          if (!isAlreadyCompleteFullName && !rawFullName.toLowerCase().endsWith(nextVal.toLowerCase())) {
+      if (!isNextColOther && row[nextColIdx] !== undefined) {
+        const nextVal = cleanTextCell(row[nextColIdx]);
+        if (nextVal && isLikelyGivenName(nextVal) && !/^\d+$/.test(nextVal)) {
+          const cleanNextVal = nextVal.trim();
+          const lowerRaw = rawFullName.toLowerCase();
+          const lowerNext = cleanNextVal.toLowerCase();
+          // Never drop the given name just because the middle name has multiple words
+          // (e.g. "Huỳnh Ngọc Kim" (Họ và chữ lót) + "Yến" (Tên) -> "Huỳnh Ngọc Kim Yến")
+          if (!lowerRaw.endsWith(lowerNext) && !lowerRaw.endsWith(' ' + lowerNext)) {
             hoPart = rawFullName;
-            tenPart = nextVal;
+            tenPart = cleanNextVal;
             rawFullName = `${hoPart} ${tenPart}`.trim();
           }
         }
@@ -1154,12 +1218,23 @@ export function parseVietnameseSchoolExcel(rawJson: any[][], preferredClassName?
         tenPart = candidateCells[1].text;
         rawFullName = `${hoPart} ${tenPart}`.trim();
       } else if (candidateCells.length > 2) {
-        // Find best candidate or join adjacent
-        const fullCandidate = candidateCells.find(c => isLikelyVietnameseName(c.text));
-        if (fullCandidate) {
-          rawFullName = fullCandidate.text;
+        // If first two candidates are adjacent and second is a likely given name
+        if (candidateCells[1].idx === candidateCells[0].idx + 1 && isLikelyGivenName(candidateCells[1].text)) {
+          hoPart = candidateCells[0].text;
+          tenPart = candidateCells[1].text;
+          if (!hoPart.toLowerCase().endsWith(tenPart.toLowerCase())) {
+            rawFullName = `${hoPart} ${tenPart}`.trim();
+          } else {
+            rawFullName = hoPart;
+          }
         } else {
-          rawFullName = candidateCells.map(c => c.text).join(' ');
+          // Find best candidate or join adjacent
+          const fullCandidate = candidateCells.find(c => isLikelyVietnameseName(c.text));
+          if (fullCandidate) {
+            rawFullName = fullCandidate.text;
+          } else {
+            rawFullName = candidateCells.map(c => c.text).join(' ');
+          }
         }
       }
     }
