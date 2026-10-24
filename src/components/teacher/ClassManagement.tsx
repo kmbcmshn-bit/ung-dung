@@ -51,6 +51,13 @@ export const ClassManagement: React.FC = () => {
     return classes[0]?.id || '';
   });
 
+  // Keep selectedClassId in sync with classes
+  React.useEffect(() => {
+    if (!classes.some(c => c.id === selectedClassId)) {
+      setSelectedClassId(classes[0]?.id || '');
+    }
+  }, [classes, selectedClassId]);
+
   // Modal states
   const [isCreateClassOpen, setIsCreateClassOpen] = useState<boolean>(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState<boolean>(false);
@@ -64,10 +71,10 @@ export const ClassManagement: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
 
   // New Class Form state
-  const [newClassName, setNewClassName] = useState<string>('11A1');
-  const [newClassGrade, setNewClassGrade] = useState<string>('Khối 11');
+  const [newClassName, setNewClassName] = useState<string>('');
+  const [newClassGrade, setNewClassGrade] = useState<string>('Khối 12');
   const [newClassYear, setNewClassYear] = useState<string>('2026 - 2027');
-  const [newClassDesc, setNewClassDesc] = useState<string>('Lớp 11A1 - THPT Võ Thị Sáu - Niên học 2026-2027');
+  const [newClassDesc, setNewClassDesc] = useState<string>('');
 
   // Search in students table
   const [searchQuery, setSearchQuery] = useState<string>('');

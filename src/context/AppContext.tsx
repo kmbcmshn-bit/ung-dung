@@ -159,10 +159,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: ClassRoom[] = JSON.parse(saved);
         const filtered = parsed.filter(c => c.id !== 'class-12a1' && c.name !== '12A1');
-        if (filtered.length > 0) return filtered;
+        return filtered;
       } catch (e) {}
     }
-    return INITIAL_CLASSES.filter(c => c.id !== 'class-12a1' && c.name !== '12A1');
+    return [];
   });
 
   const [students, setStudents] = useState<Student[]>(() => {
@@ -171,10 +171,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const parsed: Student[] = JSON.parse(saved);
         const filtered = parsed.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
-        if (filtered.length > 0) return filtered;
+        return filtered;
       } catch (e) {}
     }
-    return INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
+    return [];
   });
 
   const [currentStudentId, setCurrentStudentIdState] = useState<string | null>(() => {
@@ -218,7 +218,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [submissions, setSubmissions] = useState<Submission[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SUBMISSIONS);
-    return saved ? JSON.parse(saved) : INITIAL_SUBMISSIONS;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [complaints, setComplaints] = useState<ExamComplaint[]>(() => {
@@ -284,40 +284,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // --- REAL-TIME FIRESTORE SYNCHRONIZATION ACROSS ALL DEVICES ---
   useEffect(() => {
-    // 1. Classes subscription
+    // 1. Classes subscription (never resurrect initial mock classes)
     const unsubClasses = subscribeClasses((remoteClasses) => {
-      if (remoteClasses && remoteClasses.length > 0) {
-        setClasses(remoteClasses);
-      } else {
-        INITIAL_CLASSES.forEach(c => syncSaveClass(c).catch(console.error));
-      }
+      setClasses(remoteClasses || []);
     });
 
     // 2. Students subscription (Merge by ID: Never drop local imported students during batch write lag)
     const unsubStudents = subscribeStudents((remoteStudents) => {
-      if (remoteStudents && remoteStudents.length > 0) {
-        setStudents(prev => {
-          const studentMap = new Map<string, Student>();
-          for (const s of remoteStudents) {
-            if (s) {
-              const safeId = s.id || `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-              studentMap.set(safeId, { ...s, id: safeId });
-            }
+      const currentRemote = remoteStudents || [];
+      setStudents(prev => {
+        const studentMap = new Map<string, Student>();
+        for (const s of currentRemote) {
+          if (s) {
+            const safeId = s.id || `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+            studentMap.set(safeId, { ...s, id: safeId });
           }
-          // Retain any local students that were just added and not yet received from snapshot
-          for (const localSt of prev) {
-            if (localSt && localSt.id && !studentMap.has(localSt.id)) {
-              studentMap.set(localSt.id, localSt);
-            }
+        }
+        // Retain any local students that were just added and not yet received from snapshot
+        for (const localSt of prev) {
+          if (localSt && localSt.id && !studentMap.has(localSt.id)) {
+            studentMap.set(localSt.id, localSt);
           }
-          const list = Array.from(studentMap.values());
-          // Luôn luôn sắp xếp (sort) danh sách học sinh theo đúng số thứ tự STT tăng dần
-          return list.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
-        });
-      } else {
-        const filtered = INITIAL_STUDENTS.filter(s => s.classId !== 'class-12a1' && s.className !== '12A1');
-        syncBatchSaveStudents(filtered).catch(console.error);
-      }
+        }
+        const list = Array.from(studentMap.values());
+        // Luôn luôn sắp xếp (sort) danh sách học sinh theo đúng số thứ tự STT tăng dần
+        return list.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
+      });
     });
 
     // 3. Exams subscription (Sync exams created by teacher, NEVER erase newly created local exam)
@@ -398,7 +390,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await syncDeleteClass(id).catch(console.error);
     // Also remove students belonging to this class
     const toRemoveStudents = students.filter(s => s.classId === id);
-    toRemoveStudents.forEach(st => syncDeleteStudent(st.id).catch(console.error));
+    await Promise.all(toRemoveStudents.map(st => syncDeleteStudent(st.id).catch(console.error)));
     setStudents(prev => prev.filter(s => s.classId !== id));
     // Also remove submissions of students in this class
     setSubmissions(prev => prev.filter(sub => {

@@ -12,28 +12,7 @@ export const INITIAL_TEACHER: TeacherProfile = {
   createdAt: '2026-09-01T08:00:00Z',
 };
 
-export const INITIAL_CLASSES: ClassRoom[] = [
-  {
-    id: 'class-11a1',
-    name: '11A1',
-    grade: 'Khối 11',
-    schoolName: 'THPT Võ Thị Sáu',
-    academicYear: '2026 - 2027',
-    description: 'Lớp 11A1 - THPT Võ Thị Sáu - Ban Tự Nhiên (Năm học 2026 - 2027)',
-    studentCount: 38,
-    createdAt: '2026-09-05T08:00:00Z',
-  },
-  {
-    id: 'class-10a1',
-    name: '10A1',
-    grade: 'Khối 10',
-    schoolName: 'THPT Võ Thị Sáu',
-    academicYear: '2026 - 2027',
-    description: 'Lớp 10A1 - THPT Võ Thị Sáu - Tân Học Sinh THPT',
-    studentCount: 42,
-    createdAt: '2026-09-05T08:00:00Z',
-  }
-];
+export const INITIAL_CLASSES: ClassRoom[] = [];
 
 const VIETNAMESE_NAME_PRESETS = [
   { hoVaChuLot: 'Trần Thái', ten: 'An', gender: 'Nam' },
@@ -83,34 +62,7 @@ const VIETNAMESE_NAME_PRESETS = [
   { hoVaChuLot: 'Mai Hoàng', ten: 'Nam', gender: 'Nam' }
 ];
 
-export const INITIAL_STUDENTS: Student[] = VIETNAMESE_NAME_PRESETS.map((item, idx) => {
-  const pad = String(idx + 1).padStart(2, '0');
-  const code = 2511404880 + idx * 20;
-  const username = `tranan11a1vts2627_${pad}`;
-  return {
-    id: `st-${pad}`,
-    name: `${item.hoVaChuLot} ${item.ten}`,
-    hoVaChuLot: item.hoVaChuLot,
-    ten: item.ten,
-    studentCode: String(code),
-    email: `${username}@edusmart.edu.vn`,
-    username,
-    password: 'password123',
-    isAccountActive: true,
-    classId: 'class-11a1',
-    className: '11A1',
-    avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}&backgroundColor=${idx % 2 === 0 ? 'b6e3f4' : 'ffd5dc'}`,
-    level: (idx % 3) + 1,
-    badgeTitle: idx === 0 ? 'Thần Đồng Toán Học' : idx < 5 ? 'Học Sinh Chăm Chỉ' : 'Chiến Binh Lớp Học',
-    xp: 350 - idx * 5,
-    xpToNextLevel: 500,
-    completionPercent: Math.max(10, 45 - idx),
-    streakDays: Math.max(1, 5 - (idx % 5)),
-    rank: idx + 1,
-    gender: item.gender as 'Nam' | 'Nữ',
-    dob: `${10 + (idx % 18)}/0${(idx % 9) + 1}/2008`,
-  };
-});
+export const INITIAL_STUDENTS: Student[] = [];
 
 export const INITIAL_LESSONS: Lesson[] = [
   {
