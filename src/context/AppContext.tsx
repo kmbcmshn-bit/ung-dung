@@ -289,27 +289,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setClasses(remoteClasses || []);
     });
 
-    // 2. Students subscription (Merge by ID: Never drop local imported students during batch write lag)
+    // 2. Students subscription (Sync authoritative list from Firestore)
     const unsubStudents = subscribeStudents((remoteStudents) => {
       const currentRemote = remoteStudents || [];
-      setStudents(prev => {
-        const studentMap = new Map<string, Student>();
-        for (const s of currentRemote) {
-          if (s) {
-            const safeId = s.id || `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            studentMap.set(safeId, { ...s, id: safeId });
-          }
-        }
-        // Retain any local students that were just added and not yet received from snapshot
-        for (const localSt of prev) {
-          if (localSt && localSt.id && !studentMap.has(localSt.id)) {
-            studentMap.set(localSt.id, localSt);
-          }
-        }
-        const list = Array.from(studentMap.values());
-        // Luôn luôn sắp xếp (sort) danh sách học sinh theo đúng số thứ tự STT tăng dần
-        return list.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0));
-      });
+      if (currentRemote.length > 0) {
+        // Authoritative list from Firestore - clean and sort by STT
+        const cleanList = currentRemote.map(s => {
+          const safeId = s.id || `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          return { ...s, id: safeId };
+        });
+        setStudents(cleanList.sort((a, b) => (a.stt ?? 0) - (b.stt ?? 0)));
+      }
     });
 
     // 3. Exams subscription (Sync exams created by teacher, NEVER erase newly created local exam)
