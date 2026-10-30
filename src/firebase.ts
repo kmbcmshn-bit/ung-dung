@@ -11,7 +11,7 @@ import {
   writeBatch,
   updateDoc
 } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import firebaseConfig from './firebaseConfig';
 import { ClassRoom, Student, Exam, Submission, ExamComplaint, TeacherProfile } from './types';
 
 // Initialize Firebase
